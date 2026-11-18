@@ -9,3 +9,5 @@ dist/
 *.tif
 *.tiff
 !tests/data/*.tif
+gallery_out/
+_install_test/

@@ -77,6 +77,22 @@ def save_user_ladder(name: str, sizes: list[float], unit: str = "bp",
 
 
 PRESETS: dict[str, dict] = load_library()
+# Approximate effective separation ranges (common lab guidelines; adjust to your gel system,
+# buffer and run length). Used only as suggestions for the "valid size range".
+RESOLUTION_GUIDE: dict[str, tuple[float, float, str]] = {
+    "agarose 0.5 %": (1000, 30000, "bp"),
+    "agarose 0.7 %": (800, 12000, "bp"),
+    "agarose 1.0 %": (500, 10000, "bp"),
+    "agarose 1.2 %": (400, 7000, "bp"),
+    "agarose 1.5 %": (200, 3000, "bp"),
+    "agarose 2.0 %": (50, 2000, "bp"),
+    "SDS-PAGE 7.5 %": (40, 250, "kDa"),
+    "SDS-PAGE 10 %": (20, 150, "kDa"),
+    "SDS-PAGE 12 %": (15, 100, "kDa"),
+    "SDS-PAGE 15 %": (10, 70, "kDa"),
+    "SDS-PAGE 4-20 % gradient": (10, 250, "kDa"),
+}
+
 DEFAULT_PRESET = "NEB Quick-Load Purple 1 kb Plus (N0550)"
 
 
@@ -134,20 +150,73 @@ class MarkerCalibration:
                 "masses": self.masses, "volumes": self.volumes, "warnings": self.warnings}
 
 
-def assign_marker(band_ys: list[float], sizes: list[float],
-                  masses: list[float] | None = None) -> tuple[list[float], list[float], list[float] | None, list[str]]:
+def _fit_quality(ys, sizes, vols=None, masses=None) -> float:
+    """Lower is better: roughness of log10(size) vs migration (cubic fit residual, relative to
+    the ladder's span) plus, if masses are known, how badly band brightness disagrees with them."""
+    y = np.asarray(ys, float)
+    ls = np.log10(np.asarray(sizes, float))
+    if len(y) < 5:
+        return 0.0
+    yn = (y - y.mean()) / (y.std() + 1e-9)
+    coef = np.polyfit(yn, ls, 3)
+    rms = float(np.sqrt(np.mean((np.polyval(coef, yn) - ls) ** 2)))
+    score = rms / (ls.max() - ls.min() + 1e-9)
+    if np.any(np.diff(ls) >= 0):
+        score += 10.0
+    if vols is not None and masses is not None and len(vols) == len(masses) >= 4:
+        r = np.corrcoef(np.asarray(vols, float), np.asarray(masses, float))[0, 1]
+        if np.isfinite(r):
+            score += 0.05 * (1 - r)
+    return score
+
+
+def assign_marker(band_ys: list[float], sizes: list[float], masses: list[float] | None = None,
+                  volumes: list[float] | None = None, max_skip: int = 3
+                  ) -> tuple[list[float], list[float], list[float] | None, list[str]]:
     """Pair detected marker bands with ladder sizes.
 
-    Equal counts -> direct pairing (top->bottom). Otherwise the bands are
-    paired from the top and a warning is returned; the user should then
-    delete/add marker bands in the GUI so that the counts match.
+    Equal counts -> direct pairing (top -> bottom). If counts differ by up to ``max_skip``,
+    every way of dropping the surplus detected bands (dust, artefacts) or ladder sizes (bands
+    not resolved / run off) is tried, and the assignment giving the smoothest size-vs-migration
+    curve (and, with known masses, the best brightness match) wins. A warning always says
+    what was done so the user can check it.
     """
-    ys = sorted(band_ys)
-    warnings = []
-    n = min(len(ys), len(sizes))
-    if len(ys) != len(sizes):
-        warnings.append(
-            f"Marker: {len(ys)} bands detected but the ladder has {len(sizes)} sizes. "
-            f"Paired the top {n} only - please correct the marker bands.")
-    m = masses[:n] if masses is not None else None
-    return ys[:n], list(sizes[:n]), m, warnings
+    order = np.argsort(band_ys)
+    ys = [float(band_ys[i]) for i in order]
+    vols = [float(volumes[i]) for i in order] if volumes is not None else None
+    sizes = list(sizes)
+    warnings: list[str] = []
+    m, n = len(ys), len(sizes)
+    if m == n:
+        return ys, sizes, (list(masses) if masses else None), warnings
+    from itertools import combinations
+    k = abs(m - n)
+    if k > max_skip or min(m, n) < 3:
+        q = min(m, n)
+        warnings.append(f"Marker: {m} bands detected but the ladder has {n} sizes. Paired the top {q} "
+                        "only - please correct the marker bands.")
+        return ys[:q], sizes[:q], (list(masses[:q]) if masses else None), warnings
+    best = None
+    if m > n:     # drop k detected bands
+        for drop in combinations(range(m), k):
+            keep = [i for i in range(m) if i not in drop]
+            sc = _fit_quality([ys[i] for i in keep], sizes, [vols[i] for i in keep] if vols else None, masses)
+            if best is None or sc < best[0]:
+                best = (sc, keep, list(range(n)))
+        _, keep_y, keep_s = best
+        dropped = [ys[i] for i in range(m) if i not in keep_y]
+        warnings.append(f"Marker: {m} bands detected, ladder has {n}. Ignored the band(s) at row(s) "
+                        f"{', '.join(f'{y:.0f}' for y in dropped)} (best fit) - please check.")
+    else:         # drop k ladder sizes (missing bands)
+        for drop in combinations(range(n), k):
+            keep = [i for i in range(n) if i not in drop]
+            sc = _fit_quality(ys, [sizes[i] for i in keep], vols,
+                              [masses[i] for i in keep] if masses else None)
+            if best is None or sc < best[0]:
+                best = (sc, list(range(m)), keep)
+        _, keep_y, keep_s = best
+        missing = [sizes[i] for i in range(n) if i not in keep_s]
+        warnings.append(f"Marker: only {m} of {n} ladder bands found; assumed missing: "
+                        f"{', '.join(f'{s:g}' for s in missing)} (best fit) - please check.")
+    return ([ys[i] for i in keep_y], [sizes[i] for i in keep_s],
+            [masses[i] for i in keep_s] if masses else None, warnings)

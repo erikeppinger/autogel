@@ -14,18 +14,38 @@ hundred MB of RAM.
 
 ## 1. Installation (once)
 
+### Windows – double-click installer (recommended)
+1. Download autogel: on the GitHub page, click **Code → Download ZIP**, then unzip the folder
+   anywhere, e.g. in *Documents*. If you got the folder from a colleague or a network drive,
+   just copy it.
+2. Double-click **`install_windows.bat`** inside the folder.
+   - If Python 3.10 or newer is missing, the installer offers to install Python 3.12 with
+     Windows' own package manager (*winget*). Alternatively, install it from python.org and
+     tick *Add python.exe to PATH*.
+   - It then downloads autogel's components (about 300 MB, a few minutes) into
+     `%LOCALAPPDATA%\autogel`. No administrator rights are needed.
+3. Start autogel from the **autogel** icon on the desktop or in the Start menu.
+
+| | |
+|---|---|
+| Update | download the new version, run `install_windows.bat` again |
+| Uninstall | `%LOCALAPPDATA%\autogel\Uninstall autogel.bat` (your own ladders in `%USERPROFILE%\.autogel` are kept) |
+| Proxy / no internet | the installer needs internet access for the download; ask IT for the proxy setting (`pip` honours `HTTPS_PROXY`) |
+
+### Developers (command line)
+
 Requires Python ≥ 3.10.
 
 ```bash
-git clone <repository-url> autogel
+git clone https://github.com/<account>/autogel-bands-and-lanes autogel
 cd autogel
 python -m venv .venv
 .venv\Scripts\activate          # Windows   (Linux/macOS: source .venv/bin/activate)
-pip install -e .[gui]
+pip install -e .[gui,dev]
 ```
 
-To use only the command line, without the napari viewer, run `pip install -e .` instead.
-This needs less memory and no OpenGL.
+For the command line only, without the napari viewer, run `pip install -e .` instead. This
+needs less memory and no OpenGL.
 
 ---
 
@@ -50,6 +70,10 @@ autogel gui                     # or: autogel gui path\to\gel.tif
 ```
 
 The **autogel** panel on the right guides you from top to bottom.
+
+**Status line and log:**
+- The blue line at the top of the panel always says what autogel is doing (⏳) or has just done (✔).
+- **Log ▸** opens the complete list of steps for this gel.
 
 **Easy / Expert mode** (switch at the top of the panel; your choice is remembered):
 - **Easy** shows only the essential steps: open the image, set the lane count, detect lanes and
@@ -85,6 +109,18 @@ The **autogel** panel on the right guides you from top to bottom.
 
    Changes apply about half a second after you stop editing.
 4. Optional: enter **names** separated by commas (e.g. `M, ctrl, s1, s2, …`).
+5. **Two gels in one picture** (a big gel with two combs, or two gels side by side on the tray
+   one above the other):
+   - Set **gel rows (combs)** to 2. Use 3 or 4 for more combs.
+   - autogel finds the second row of wells and draws the split as a green line (layer
+     *gel rows*). If the line is wrong, drag it to just above the lower wells; lanes and bands
+     are then detected again.
+   - **number of lanes** means lanes *per gel row*.
+   - Lanes are named A1…An for the upper gel and B1…Bn for the lower one, but numbered on
+     through both (lane n+1 = B1). Give marker lanes by number, e.g. `1, 20, 21, 40` for markers
+     at both edges of both gels.
+   - Sizes are calibrated **only from markers in the same gel row**, so each gel row needs at
+     least one marker.
 
 ### 3.3 Bands
 - **Detect bands (all lanes)**: finds band peaks in every lane's background-corrected profile.
@@ -130,10 +166,26 @@ The **autogel** panel on the right guides you from top to bottom.
    - autogel fits band volume against ng for the ladder bands (unsaturated bands only, line
      through the origin). The table then gets `est_mass_ng`, and the fit's R² is shown.
    - **sample loads** (`lane:µl`, e.g. `2:5, 3:5`) adds `conc_ng_per_ul`.
-4. Click **Calibrate & quantify**.
-5. If the number of detected marker bands differs from the ladder, you get a warning. Add or
-   delete marker bands until the counts match. Doublets such as NEB's 500/517 bp count as
+4. **Valid size range** (optional): every gel resolves only a certain size range well.
+   - *automatic (whole ladder)* is the default.
+   - Choosing a gel type (e.g. *agarose 1.0 %* → 500–10 000 bp, *SDS-PAGE 12 %* → 15–100 kDa)
+     fills in a typical range; edit **min / max** to set your own.
+   - Only ladder bands inside the range are used for the size curve and the ng curve.
+   - Sample bands outside it are marked `size_in_range = False` and listed as a warning.
+   - Example (Test_1, NEB 1 kb Plus): the ng curve improves from R² 0.67 (whole ladder) to 0.76
+     (0.5–10 kb) and 0.87 (1–8 kb).
+   - The gel-type ranges are common guidelines. Adjust them to your buffer and run conditions.
+5. Click **Calibrate & quantify**.
+6. If the number of detected marker bands differs from the ladder (dust, or a band too faint or
+   run off), autogel tries every possible assignment and picks the one that gives the smoothest
+   size curve. Where the ladder has masses, it also checks that bright bands match the bright
+   reference bands. The warning says which band it ignored or assumed missing: check it, and
+   add or delete marker bands if it guessed wrong. Doublets such as NEB's 500/517 bp count as
    **one** band.
+7. **Smiling gels** (outer lanes run slower than the middle): with markers only at the two edges,
+   sizes in the middle lanes can be off by 5–10 %. Load a marker in a middle lane as well (e.g.
+   lanes `1, 10, 20`). Sizes are then interpolated between neighbouring markers, which brought
+   the error down to 2–3 % in the simulated test gel.
 
 Built-in ladders, as of 2026-11-18:
 
@@ -175,35 +227,94 @@ It is stored in `~/.autogel/ladders.json` and appears in the list from then on.
 | `<gel>_profiles.pdf` | one profile plot per lane, plus the calibration curves |
 | `<gel>_annotated.png` | the gel with lanes, bands and sizes drawn on it |
 | `<gel>_autogel.xlsx` | all tables plus the log in one workbook |
-| `<gel>_log.txt` | human-readable log of every step and setting |
+| `<gel>_report.md` | **lab-book report** (see below) |
+| `<gel>_log.txt` | one readable line per step, with the raw settings |
+| `<gel>_log.jsonl` | the same log, machine-readable (one JSON object per line) |
 | `<gel>_session.json` | complete state for exact replay |
+
+**Lab-book report (`<gel>_report.md`).** It's written in Markdown, which electronic lab
+notebooks (eLabFTW, LabArchives, Benchling, OneNote, Obsidian …) accept directly. Paste it, or
+convert it to Word or PDF with any Markdown tool. It contains:
+- the image file with its **SHA-256 checksum**, which proves exactly which image was analysed
+- size, bit depth, saturation level and the orientation that was applied
+- all settings: lane count, background, detection thresholds, marker, ladder load, size range
+- the ng mass curve (slope, R², number of bands, range)
+- every step with its time in plain language; repeated automatic recalculations are merged
+  into one line
+- per lane: name, number of bands, sizes, total intensity, total ng, saturated bands
+- all warnings and a list of the exported files
+
+Example lines:
+
+```
+| 2026-11-18 15:25:29 | detect_lanes | Detected 20 lanes, width 59 px, well row 87 (lane spacing 73.6 px) |
+| 2026-11-18 15:25:29 | set_bands    | Bands edited (edited in viewer): 0 added/changed, 1 removed/changed, 94 total |
+```
+
+The JSON Lines log carries the same steps with every parameter, for scripts or databases.
 
 - **Save session… / Open session…** stores or restores everything, including manual edits.
   If the image has moved, autogel asks you where it is.
 
 ---
 
-## 4. Command line (batch, no GUI)
+## 4. Batch: many gels with the same settings
+
+**In the GUI:**
+1. Analyse one gel completely: lane count, gel rows, ladder, marker lanes, size range, and any
+   detection settings.
+2. Click **Batch: more gels with these settings…**.
+3. Select the images and an output folder.
+
+autogel then processes every image automatically. Each image still gets its own orientation,
+lanes and bands.
+
+Output:
+
+| File | Content |
+|---|---|
+| `batch_report.md` | overview: settings used, one line per gel with status **✔ ok / ⚠ check / ✖ error**, problem gels first |
+| `batch_summary.csv` | the same as a table (lanes, bands, saturated bands, mass-curve R², warnings) |
+| `batch_bands.csv` | all bands of all gels, with a `gel` column, for pivot tables and statistics |
+| `batch_autogel.xlsx` | both tables in one workbook |
+| `<gel>_autogel/` | the complete normal export of every gel, including its **session** |
+
+**To correct one gel of a batch:** open its `<gel>_session.json` with **Open session…**, fix the
+lanes or bands, and export again. A broken or unreadable image is listed as an error and the
+batch carries on.
+
+## 5. Command line (no GUI)
 
 ```bash
 autogel run gel.tif --lanes 20 --marker-lanes 1 20
-autogel run *.tif --lanes 20 --marker-lanes 1 20 --load 5 --ref-load 5
+autogel run gel.tif --lanes 20 --marker-lanes 1 20 --gel "agarose 1.0 %"     # size range by gel type
+autogel run gel.tif --lanes 20 --marker-lanes 1 20 --size-range 500 10000
 autogel run --session gel_autogel/gel_session.json      # reproduce a saved analysis exactly
+autogel batch D:\gels\2026-11 --template gel_autogel/gel_session.json --out D:\results\2026-11
+autogel ladders NEB                                    # list ladders (filter by text)
 ```
 
-Options: `--preset`, `--sizes "10000,8000,…"`, `--invert` (dark bands), `--bg rolling_ball|lane_edges|none`,
-`--out DIR`.
+Options of `run`:
+
+| Option | Meaning |
+|---|---|
+| `--preset` | ladder name, as listed by `autogel ladders` |
+| `--sizes "10000,8000,…"` | your own ladder sizes |
+| `--load` / `--ref-load` | ladder µg loaded / µg the datasheet masses refer to |
+| `--invert` | dark bands on a light background |
+| `--bg rolling_ball\|lane_edges\|none` | background method |
+| `--out DIR` | output folder |
 
 ---
 
-## 5. Column reference (`bands.csv`)
+## 6. Column reference (`bands.csv`)
 
 | Column | Meaning |
 |---|---|
 | `y_px`, `y0_px`, `y1_px` | peak row and integration limits (oriented image) |
 | `rf` | migration relative to the well (0 = well, 1 = bottom of the image) |
-| `size_bp` / `size_kDa` | interpolated from the marker(s). `size_extrapolated` = outside the ladder range, treat with care |
-| `volume` | background-corrected integrated intensity (**use this one**) |
+| `size_bp` / `size_kDa` | interpolated from the marker(s). `size_extrapolated` = outside the calibrated ladder bands; `size_in_range` = inside the valid size range and not extrapolated |
+| `volume` | background-corrected **integrated intensity** of the band in arbitrary camera units: the sum of all pixel values in the band rectangle (80 % of the lane width × the band's rows) minus the background. "Volume" is the usual densitometry term. **Use this one** |
 | `raw_volume`, `background` | the two parts of `volume` |
 | `pct_of_lane` | share of all band volume in this lane |
 | `saturated`, `saturated_px` | band contains clipped pixels. The volume is too low |
@@ -214,7 +325,7 @@ Options: `--preset`, `--sizes "10000,8000,…"`, `--invert` (dark bands), `--bg 
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -225,4 +336,6 @@ Options: `--preset`, `--sizes "10000,8000,…"`, `--invert` (dark bands), `--bg 
 | Two bands merged | Draw two rectangles with the right limits instead of one |
 | Sizes wrong | Check that the marker band count matches the ladder (warning under *Calibrate*) |
 | Mass R² low | Normal for the smallest and largest fragments, which stain less per ng and are more diffuse. Use only bands within the ladder's mass range, and don't quantify saturated bands |
+| Two gels in one image, lanes look wrong | Set **gel rows (combs)** to 2 and check the green split line |
+| Many gels to do | Use **Batch** (section 4) with one finished gel as the template |
 | GUI does not start on an old PC | Use the command line, or update the graphics driver (napari needs OpenGL 2.1) |

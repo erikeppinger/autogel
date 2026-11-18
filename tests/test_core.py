@@ -122,9 +122,23 @@ def test_size_calibration(gel):
 
 def test_marker_count_mismatch_warns(gel):
     ga = run(gel, n_lanes=10)
-    ga.set_marker([1], sizes=SIZES + [50])
-    ga.quantify()
-    assert any("detected but the ladder has" in w for c in ga.calibrations for w in c.warnings)
+    ga.set_marker([1], sizes=SIZES + [50])          # 50 bp is not on the gel
+    df = ga.quantify()
+    warns = [w for c in ga.calibrations for w in c.warnings]
+    assert any("assumed missing: 50" in w for w in warns)
+    # the best-fit assignment keeps the sizes right despite the extra ladder entry
+    assert df[df.lane == 2]["size_bp"].iloc[0] == pytest.approx(2500, rel=0.03)
+
+
+def test_marker_with_dust_band_is_matched(gel):
+    ga = run(gel, n_lanes=10)
+    ga.set_marker([1], sizes=SIZES)
+    lane0 = [b for b in ga.bands if b.lane == 0]
+    fake = ga.band_for(0, lane0[0].y - 60, lane0[0].y - 50)   # spurious band above 10 kb
+    ga.set_bands(ga.bands + [fake])
+    df = ga.quantify()
+    assert any("Ignored the band" in w for c in ga.calibrations for w in c.warnings)
+    assert df[df.lane == 2]["size_bp"].iloc[0] == pytest.approx(2500, rel=0.03)
 
 
 def test_mass_curve_and_load_scaling(gel):
@@ -298,3 +312,18 @@ def test_label_format_and_declutter(gel):
     assert all(keep_far) and sum(keep_near) < len(labs)
     # each lane side keeps at least its highest-priority label
     assert {(l.lane, l.side) for l, k in zip(labs, keep_near) if k} == sides
+
+
+def test_size_range_limits_calibration_and_flags(gel):
+    ga = run(gel, n_lanes=10)
+    ga.set_marker([1, 10], sizes=SIZES)
+    df_all = ga.quantify()
+    ga.set_size_range(500, 3000)
+    df = ga.quantify()
+    assert all(500 * 0.98 <= s <= 3000 * 1.02 for s in ga.calibrations[0].sizes)
+    s2500 = df[(df.lane == 3)].sort_values("y_px").iloc[0]
+    assert s2500["size_in_range"] and s2500["size_bp"] == pytest.approx(2500, rel=0.03)
+    assert df.size_in_range.sum() < df_all.size_in_range.sum()
+    ga.set_size_range(9000, 9500)          # < 2 ladder bands inside -> warning, range ignored
+    ga.quantify()
+    assert any("fewer than 2" in w for c in ga.calibrations for w in c.warnings)

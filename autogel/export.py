@@ -14,6 +14,7 @@ from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 from .analysis import GelAnalysis  # noqa: E402
 from .labels import declutter, plan_labels  # noqa: E402
+from .report import describe, write_jsonl, write_report_md  # noqa: E402
 
 
 def _display(a: np.ndarray) -> tuple[float, float]:
@@ -97,10 +98,11 @@ def annotated_image(ga: GelAnalysis, path: str, df: pd.DataFrame | None = None):
 
 
 def write_log_txt(ga: GelAnalysis, path: str):
+    """Plain-text log: one readable line per step, raw parameters indented below."""
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"autogel analysis log\nimage: {ga.path}\n\n")
         for e in ga.log:
-            f.write(f"[{e['time']}] {e['step']}\n")
+            f.write(f"[{e['time']}] {e['step']}: {describe(e)}\n")
             if e["params"]:
                 f.write(f"    params: {json.dumps(e['params'], default=str)}\n")
             if e["result"]:
@@ -131,7 +133,9 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
                              "mass_datasheet": c.masses[k] if c.masses else None,
                              "volume": c.volumes[k] if c.volumes else None})
     cal = pd.DataFrame(cal_rows)
-    log = pd.DataFrame([{**e, "params": json.dumps(e["params"], default=str)} for e in ga.log])
+    log = pd.DataFrame([{"time": e["time"], "step": e["step"], "message": describe(e),
+                         "result": e["result"], "params": json.dumps(e["params"], default=str)}
+                        for e in ga.log])
     with pd.ExcelWriter(os.path.join(out_dir, f"{stem}_autogel.xlsx")) as xw:
         df.to_excel(xw, sheet_name="bands", index=False)
         lanes.to_excel(xw, sheet_name="lanes", index=False)
@@ -161,7 +165,7 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
                 xx = np.linspace(0, pts[:, 0].max() * 1.05, 10)
                 axs[0, 1].plot(xx, ga.mass_fit["slope"] * xx, "-")
                 axs[0, 1].set_xlabel(f"ladder band mass ({ga.mass_fit['unit']})")
-                axs[0, 1].set_ylabel("volume")
+                axs[0, 1].set_ylabel("integrated intensity (a.u.)")
                 axs[0, 1].set_title(f"R² = {ga.mass_fit['r2']:.3f}", fontsize=9)
             fig.tight_layout()
             pdf.savefig(fig)
@@ -169,5 +173,9 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
 
     annotated_image(ga, os.path.join(out_dir, f"{stem}_annotated.png"), df)
     write_log_txt(ga, os.path.join(out_dir, f"{stem}_log.txt"))
+    write_jsonl(ga, os.path.join(out_dir, f"{stem}_log.jsonl"))
     ga.save_session(os.path.join(out_dir, f"{stem}_session.json"))
+    files = sorted(f for f in os.listdir(out_dir) if f.startswith(stem + "_") and not f.endswith("_report.md"))
+    write_report_md(ga, df, os.path.join(out_dir, f"{stem}_report.md"),
+                    files=[f"{stem}_report.md", *files])
     return out_dir

@@ -73,6 +73,9 @@ replayable log.
 - Lanes are straight rectangles. Strongly curved lanes need manual adjustment; there is no
   curved-lane model yet.
 - Overlapping bands are split at the valley between them, with no Gaussian deconvolution yet.
+- JPEG / 8-bit images and scratched gels can produce a few spurious faint bands. Use the
+  original TIFF, and delete such bands in the viewer.
+- Smiling gels need a marker in the middle for accurate sizes (2–3 % instead of 7–10 %).
 - Lane-count auto-estimate without user input can include tray-edge or label peaks next to the
   gel. That's why the GUI asks.
 - Ladders not yet verified: GeneRuler 100 bp Plus / 100 bp (sizes and masses) and Bio-Rad
@@ -84,6 +87,116 @@ replayable log.
 ---
 
 ## 6. Change log
+
+### 0.2.0 – 2026-11-18 – logging, GUI test coverage, gel gallery, stacked gels, batch, installer
+User requests:
+- every GUI option must be tested
+- test runs on gels of different quality (simulated if necessary)
+- a log format that can be pasted into a lab book
+- a visible log line
+- a user-selectable size range per gel %
+- what does "volume" mean?
+- stacked gels with two combs
+- batch processing
+- an easier installation
+
+**Logging / lab book**
+- `report.py`: `describe()` turns every step into a sentence.
+- Export now also writes:
+  - `<gel>_report.md`: a Markdown report for ELNs with the image SHA-256, settings, step table
+    (recalculations merged), per-lane results, warnings and the file list
+  - `<gel>_log.jsonl`: machine-readable, one JSON object per step
+  - the txt log now shows sentences
+- GUI: a status line (⏳ running / ✔ done / ✖ failed), a wait cursor and a collapsible log panel.
+  Fed by `GelAnalysis.listeners`; a listener exception can never break the analysis.
+- The CLI no longer crashes on cp1252 Windows consoles (µ, ², ⚠).
+
+**GUI test coverage (`tests/test_gui.py`, 19 tests)**
+- Every control is exercised on a synthetic gel and must change something measurable: mode
+  switch, log, rotate/flip/invert/skew, lane count (given and asked), names, all band-detection
+  parameters, re-detect lane, viewer edits, ladder presets, sizes/masses/loads/sample loads, save
+  ladder, bad input, palette, label-all, profile navigation and hover, export, session,
+  size range, gel rows, batch.
+- **Bugs found by these tests and fixed:**
+  - Native crash when a second viewer was opened after closing one (timers and connections of the
+    closed widget). Added `AutogelWidget.shutdown()` / `closeEvent`.
+  - **A band edit in the viewer could be silently dropped.** A spurious "lanes changed" event
+    made the edit handler skip band edits. Lane edits now count only if the geometry really
+    changed.
+
+**Simulated gel gallery (`tests/gallery.py`, `tests/test_gallery.py`, `tools/run_gallery.py`)**
+- 16 scenarios with ground truth: clean, low signal, uneven light, tilted 2.5°, smiling (with 2
+  and with 3 markers), dust and scratches, smears and empty lanes, overexposed, 8-bit JPEG,
+  rotated plus upside down, 26 narrow lanes, 6 wide lanes, two combs, SDS-PAGE Coomassie RGB
+  and greyscale.
+- Scored on lanes, ladder bands, sample bands found/missed/extra, size error and relative
+  quantification error.
+- **Fixes driven by the gallery:**
+  - The simulator conserved peak height instead of mass (my error), which caused a fake 11 %
+    ratio error. Fixed.
+  - Empty lanes and smears made the spacing estimate lock onto 2× the spacing (7 of 12 lanes).
+    New `_fit_comb_n`: with the lane count known, an exhaustive comb fit with exactly n teeth,
+    then refinement on each lane's plateau.
+  - Wide lanes and RGB Coomassie were split in two. The lane-profile baseline window (W/20) was
+    narrower than the lanes; now W/4.
+  - One extra or missing marker band shifted every size assignment. `assign_marker` now tries
+    every way to drop up to 3 surplus bands or ladder sizes and picks the smoothest log(size)
+    curve, cross-checking brightness against datasheet masses. The warning names the ignored or
+    missing band. On Test_1, deleting the 700 bp band from marker lane 20 is recovered
+    automatically.
+  - Smiling gels: two edge markers give 7–10 % size error; a middle marker gives 2–3 %.
+    Documented as a recommendation.
+- **Tried and reverted:** rejecting "bands" that also appear between lanes (meant for JPEG and
+  scratch artefacts) also removed real ladder bands on Test_1 (17 and 15 of 19 left).
+- **Result:**
+  - 0 missed bands in all 16 scenarios
+  - median size error ≤ 0.3 % (smiling: 7.4 % with two markers, 2.0 % with three)
+  - relative quantification error ≤ 3 % (overexposed: 15 %, flagged as saturated)
+  - known: up to 11 spurious faint bands in the JPEG case and 3 in the scratched one
+
+**Valid size range**
+- Automatic (whole ladder), suggestions by gel %, or a custom min/max, with 2 % tolerance at the
+  limits so a "10 kb" limit includes NEB's 10002 bp band.
+- Only ladder bands inside the range feed the size and mass curves; samples outside are flagged
+  (`size_in_range`).
+- On Test_1 the mass R² goes from 0.67 (whole ladder) to 0.76 (0.5–10 kb) to 0.87 (1–8 kb).
+- "Volume" is relabelled as *integrated intensity (a.u.)* in plots and the report.
+
+**Stacked gels / two combs**
+- `Params.n_tiers`, `tier_rows`; `Lane.tier`. Lanes, wells and names (A1…, B1…) are found per
+  gel row.
+- The split is found from the periodicity of well edges along x: ~0.92 for wells against
+  0.4–0.64 for band rows. Weighting by edge energy picked a band row instead, so the score uses
+  periodicity alone.
+- Sizes use only markers of the same gel row.
+- GUI: a **gel rows (combs)** setting and a draggable green split line. Moving it re-detects
+  the lanes.
+- Gallery: 24/24 lanes, 4 × 13/13 ladder bands, 34/34 sample bands.
+
+**Batch (`batch.py`, `autogel batch`, GUI button)**
+- Settings come from the current gel or a session file. Each image gets its own orientation,
+  lanes, bands, export and session; a failure is logged and the batch continues.
+- Combined outputs: `batch_summary.csv`, `batch_bands.csv`, `batch_autogel.xlsx` and
+  `batch_report.md` (problem gels first).
+
+**Installation**
+- `install_windows.bat` + `tools/install_windows.ps1`:
+  - finds Python ≥ 3.10 or offers `winget`
+  - creates a venv in `%LOCALAPPDATA%\autogel` and installs autogel with the GUI
+  - creates desktop and Start-menu shortcuts, a launcher and an uninstaller
+- No admin rights, git or command line needed.
+- The test run hit Windows' 260-character path limit (PyQt6 has very deep file names) when
+  installing into a long folder. The installer now refuses install paths longer than 70
+  characters; the default path is fine.
+- Verified: install into a test folder, then import of autogel 0.1.0 and napari 0.10.0, and the
+  CLI runs.
+
+**Other**
+- `autogel ladders [filter]` lists the library; `--preset` no longer dumps 80 names into the help.
+- ApE import: P-numbers (P1473, P9577, P1598) are Sigma, not NEB. Vendor rule fixed and data
+  re-imported.
+- Real public gel images: GelGenie's Zenodo dataset (575 gels with hand-drawn band masks, CC
+  licences) is a good real-world benchmark. Not downloaded yet (needs the user's OK).
 
 ### 0.1.3 – 2026-11-18 – readable size labels, visible band boxes
 - **Changed** size labels (user feedback: labels sat on the bands and overlapped):

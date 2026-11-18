@@ -21,7 +21,7 @@ from collections import OrderedDict
 
 LINE = re.compile(r"^([^\t#][^\t]*)\t\s*([\d ]+)\s*$")
 VENDORS = [  # catalog-number patterns used in ApE's ladder names
-    (re.compile(r"\((?:N|P)\d{4}\)$"), "NEB"),
+    (re.compile(r"\(N\d{4}\)$"), "NEB"),          # NEB DNA products are N####
     (re.compile(r"\(G\d{3,4}\)$"), "Promega"),
     (re.compile(r"\((?:\d{5}|10488-\d{3})\)$"), "Invitrogen"),
     (re.compile(r"\((?:D|P|S)\d{4}\)$"), "Sigma"),

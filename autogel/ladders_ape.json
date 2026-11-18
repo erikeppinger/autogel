@@ -1662,8 +1662,8 @@
    "verified": false
   },
   {
-   "name": "NEB PCR 100 bp Low Ladder (P1473)",
-   "vendor": "NEB",
+   "name": "Sigma PCR 100 bp Low Ladder (P1473)",
+   "vendor": "Sigma",
    "catalog": "P1473",
    "unit": "bp",
    "sizes": [
@@ -1846,8 +1846,8 @@
    "verified": false
   },
   {
-   "name": "NEB PCR Markers (P9577)",
-   "vendor": "NEB",
+   "name": "Sigma PCR Markers (P9577)",
+   "vendor": "Sigma",
    "catalog": "P9577",
    "unit": "bp",
    "sizes": [
@@ -1963,8 +1963,8 @@
    "verified": false
   },
   {
-   "name": "NEB PCR 20 bp Low Ladder (P1598)",
-   "vendor": "NEB",
+   "name": "Sigma PCR 20 bp Low Ladder (P1598)",
+   "vendor": "Sigma",
    "catalog": "P1598",
    "unit": "bp",
    "sizes": [

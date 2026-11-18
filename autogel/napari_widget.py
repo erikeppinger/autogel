@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -43,7 +44,8 @@ from qtpy.QtWidgets import (
 from .analysis import GelAnalysis, Lane, Params
 from .export import export_all, plot_lane
 from .labels import declutter, plan_labels
-from .markers import DEFAULT_PRESET, PRESETS, parse_sizes, save_user_ladder
+from .markers import DEFAULT_PRESET, PRESETS, RESOLUTION_GUIDE, parse_sizes, save_user_ladder
+from .report import describe
 
 # Okabe & Ito (2008) colour-universal-design palette: distinguishable with
 # protanopia, deuteranopia and tritanopia; "classic" kept for users who prefer it.
@@ -231,6 +233,24 @@ class AutogelWidget(QWidget):
             row.addWidget(btn)
         row.addStretch()
         lay.addLayout(row)
+        # live activity line (always visible) + full step log (toggle)
+        row = QHBoxLayout()
+        self.lbl_status = QLabel("Open a gel image to start.")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet("color: #56B4E9")
+        row.addWidget(self.lbl_status, 1)
+        self.btn_log = QPushButton("Log ▸")
+        self.btn_log.setCheckable(True)
+        self.btn_log.setFixedWidth(64)
+        row.addWidget(self.btn_log)
+        lay.addLayout(row)
+        self.txt_log = QPlainTextEdit()
+        self.txt_log.setReadOnly(True)
+        self.txt_log.setMaximumBlockCount(2000)
+        self.txt_log.setMinimumHeight(140)
+        self.txt_log.setVisible(False)
+        lay.addWidget(self.txt_log)
+        self.btn_log.toggled.connect(self._toggle_log)
         mode = str(QSettings("autogel", "autogel").value("mode", "easy"))
         (self.btn_expert if mode == "expert" else self.btn_easy).setChecked(True)
         self.btn_easy.toggled.connect(lambda _: self._apply_mode(save=True))
@@ -286,6 +306,12 @@ class AutogelWidget(QWidget):
         self.sp_lanes.setSpecialValueText("ask")
         self.sp_lanes.setToolTip("Number of lanes incl. marker. 'ask' = estimate and ask you to confirm.")
         f.addRow("number of lanes", self.sp_lanes)
+        self.sp_tiers = QSpinBox()
+        self.sp_tiers.setRange(1, 4)
+        self.sp_tiers.setToolTip("Gels stacked in one image (one comb per gel row). The split line "
+                                 "is found automatically and can be dragged in the 'gel rows' layer.")
+        self.sp_tiers.valueChanged.connect(self._tiers_changed)
+        f.addRow("gel rows (combs)", self.sp_tiers)
         b = QPushButton("Detect lanes")
         b.clicked.connect(self.detect_lanes)
         f.addRow(b)
@@ -354,6 +380,30 @@ class AutogelWidget(QWidget):
         f.addRow(b)
         for w in (self.ed_sizes, self.ed_masses, b):
             self._expert_items.append((f, w))
+        # valid size range (resolution range of the gel): automatic, by gel %, or custom
+        self.cb_range = QComboBox()
+        self.cb_range.addItems(["automatic (whole ladder)", *RESOLUTION_GUIDE, "custom"])
+        self.cb_range.setToolTip("Only ladder bands inside this range are used for the size and mass "
+                                 "curves; sample bands outside are flagged. Gel % values are typical "
+                                 "guidelines - adjust to your system.")
+        f.addRow("valid size range", self.cb_range)
+        rng = QWidget()
+        rl = QHBoxLayout(rng)
+        rl.setContentsMargins(0, 0, 0, 0)
+        self.sp_rmin = QDoubleSpinBox()
+        self.sp_rmax = QDoubleSpinBox()
+        for sp in (self.sp_rmin, self.sp_rmax):
+            sp.setRange(0, 1e7)
+            sp.setDecimals(0)
+            sp.setSpecialValueText("–")
+            sp.setKeyboardTracking(False)
+        rl.addWidget(self.sp_rmin)
+        rl.addWidget(QLabel("to"))
+        rl.addWidget(self.sp_rmax)
+        f.addRow("  min / max", rng)
+        self.cb_range.currentTextChanged.connect(self._range_preset_changed)
+        self.sp_rmin.valueChanged.connect(self._range_values_changed)
+        self.sp_rmax.valueChanged.connect(self._range_values_changed)
         self.ed_marker_lanes = QLineEdit()
         self.ed_marker_lanes.setPlaceholderText("e.g. 1, 20")
         f.addRow("marker lane(s)", self.ed_marker_lanes)
@@ -413,6 +463,12 @@ class AutogelWidget(QWidget):
         b.clicked.connect(self.save_session)
         row.addWidget(b)
         f.addLayout(row)
+        b = QPushButton("Batch: more gels with these settings…")
+        b.setToolTip("Analyse many images with this gel's settings (lanes, gel rows, ladder, marker "
+                     "lanes, size range, detection). Each gel gets its own export and session; "
+                     "batch_report.md lists the gels that need a look.")
+        b.clicked.connect(self.batch)
+        f.addWidget(b)
         lay.addWidget(g)
         lay.addStretch()
 
@@ -423,6 +479,49 @@ class AutogelWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(sc)
         self.setMinimumWidth(380)
+
+    def shutdown(self):
+        """Stop timers and detach from the analysis/viewer (closing the window or the dock)."""
+        for t in (getattr(self, "_timer", None), getattr(self, "_zoom_timer", None)):
+            if t is not None:
+                t.stop()
+        if self.ga is not None and self._on_log in self.ga.listeners:
+            self.ga.listeners.remove(self._on_log)
+        if getattr(self, "_zoom_hooked", False):
+            with contextlib.suppress(Exception):
+                self._camera().events.zoom.disconnect(self._zoom_cb)
+            self._zoom_hooked = False
+
+    def closeEvent(self, event):  # noqa: N802 (Qt API)
+        self.shutdown()
+        super().closeEvent(event)
+
+    def _toggle_log(self, on: bool):
+        self.txt_log.setVisible(on)
+        self.btn_log.setText("Log ▾" if on else "Log ▸")
+
+    def _on_log(self, e: dict):
+        """Listener on GelAnalysis._log: every step appears in the status line and the log."""
+        msg = describe(e)
+        self.lbl_status.setText(f"✔ {msg}")
+        self.txt_log.appendPlainText(f"{e['time'][11:]}  {msg}")
+        self.viewer.status = msg
+
+    @contextlib.contextmanager
+    def _busy(self, what: str):
+        """Show what is running (status line + wait cursor) for operations that take a moment."""
+        from qtpy.QtWidgets import QApplication
+        self.lbl_status.setText(f"⏳ {what} …")
+        self.viewer.status = f"{what} …"
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            yield
+        except Exception as e:
+            self.lbl_status.setText(f"✖ {what} failed: {e}")
+            raise
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _apply_mode(self, save: bool = False):
         expert = self.btn_expert.isChecked()
@@ -443,6 +542,7 @@ class AutogelWidget(QWidget):
         p.min_snr = self.sp_snr.value()
         p.min_coverage = self.sp_cov.value()
         p.n_lanes = self.sp_lanes.value() or None
+        p.n_tiers = self.sp_tiers.value()
         p.invert = self.chk_invert.isChecked()
         return p
 
@@ -484,14 +584,22 @@ class AutogelWidget(QWidget):
     def open_image(self, path: str, orientation: dict | None = None):
         p = self._params() if self.ga else Params(invert=None)
         p.n_lanes = self.sp_lanes.value() or None
+        p.n_tiers = self.sp_tiers.value()
         if not self.ga:
             p.invert = None
         self.ga = None
-        ga = GelAnalysis(path, p, orientation=orientation)
-        self._set_analysis(ga)
+        with self._busy(f"Loading {os.path.basename(path)}"):
+            ga = GelAnalysis(path, p, orientation=orientation)
+            self._set_analysis(ga)
 
     def _set_analysis(self, ga: GelAnalysis):
         self.ga = ga
+        self.txt_log.clear()
+        for e in ga.log:
+            self.txt_log.appendPlainText(f"{e['time'][11:]}  {describe(e)}")
+        if ga.log:
+            self.lbl_status.setText(f"✔ {describe(ga.log[-1])}")
+        ga.listeners.append(self._on_log)
         self.df = None
         self._focus_lane = None
         self._updating = True
@@ -500,7 +608,7 @@ class AutogelWidget(QWidget):
             self.chk_invert.setChecked(bool(ga.gel.orientation.get("invert")))
             self.chk_invert.blockSignals(False)
             self.sp_angle.setValue(ga.gel.orientation.get("angle", 0.0))
-            for name in ("gel", "saturated", "highlight", "lanes", "bands", "sizes left", "sizes right"):
+            for name in ("gel", "saturated", "highlight", "gel rows", "lanes", "bands", "sizes left", "sizes right"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
             a = ga.data
@@ -514,6 +622,9 @@ class AutogelWidget(QWidget):
             lanes = self.viewer.add_shapes(name="lanes", shape_type="rectangle",
                                            edge_color=self.colors["lane"],
                                            face_color="transparent", edge_width=2)
+            tiers = self.viewer.add_shapes(name="gel rows", shape_type="line", edge_color="#009E73",
+                                           edge_width=4)
+            tiers.events.data.connect(lambda e: self._schedule("tiers"))
             bands = self.viewer.add_shapes(name="bands", shape_type="rectangle",
                                            edge_color=self.colors["band"],
                                            face_color="transparent", edge_width=1.5)
@@ -536,7 +647,8 @@ class AutogelWidget(QWidget):
                 self._zoom_timer.setSingleShot(True)
                 self._zoom_timer.setInterval(120)
                 self._zoom_timer.timeout.connect(self._place_labels)
-                self._camera().events.zoom.connect(lambda e: self._zoom_timer.start())
+                self._zoom_cb = lambda e: self._zoom_timer.start()
+                self._camera().events.zoom.connect(self._zoom_cb)
                 self._zoom_hooked = True
         finally:
             self._updating = False
@@ -547,6 +659,9 @@ class AutogelWidget(QWidget):
     def _sync_controls_from_params(self):
         p = self.ga.params
         self.sp_lanes.setValue(p.n_lanes or 0)
+        self.sp_tiers.blockSignals(True)
+        self.sp_tiers.setValue(p.n_tiers or 1)
+        self.sp_tiers.blockSignals(False)
         self.cb_bg.setCurrentText(p.bg_method)
         self.sp_snr.setValue(p.min_snr)
         self.sp_cov.setValue(p.min_coverage)
@@ -556,6 +671,13 @@ class AutogelWidget(QWidget):
             self.ed_sizes.setText(", ".join(f"{s:g}" for s in p.marker_sizes))
         self.ed_masses.setText(", ".join(f"{m:g}" for m in p.marker_masses) if p.marker_masses else "")
         self.ed_marker_lanes.setText(", ".join(map(str, p.marker_lanes)))
+        for sp, v in ((self.sp_rmin, p.size_min or 0), (self.sp_rmax, p.size_max or 0)):
+            sp.blockSignals(True)
+            sp.setValue(v)
+            sp.blockSignals(False)
+        self.cb_range.blockSignals(True)
+        self.cb_range.setCurrentText("custom" if (p.size_min or p.size_max) else "automatic (whole ladder)")
+        self.cb_range.blockSignals(False)
         self.ed_names.setText(", ".join(l.name for l in self.ga.lanes))
 
     # ------------------------------------------------------- orientation
@@ -595,7 +717,8 @@ class AutogelWidget(QWidget):
         if not p.n_lanes:
             # estimate first, then let the user confirm the real number (internal check)
             p.n_lanes = None
-            est = len(self.ga.detect_lanes())
+            with self._busy("Estimating lanes"):
+                est = len(self.ga.detect_lanes())
             n, ok = QInputDialog.getInt(self, "Number of lanes",
                                         f"Detected {est} lanes.\nHow many lanes (incl. marker) are on the gel?",
                                         est, 1, 200)
@@ -609,7 +732,8 @@ class AutogelWidget(QWidget):
                 self._refresh_layers()
                 self._names_changed()
                 return
-        self.ga.detect_lanes()
+        with self._busy(f"Detecting {p.n_lanes} lanes"):
+            self.ga.detect_lanes()
         found = len(self.ga.lanes)
         if found != p.n_lanes:
             QMessageBox.warning(self, "autogel",
@@ -619,6 +743,15 @@ class AutogelWidget(QWidget):
             self.ga._log("confirm_lanes", {"n_lanes": p.n_lanes}, "user corrected lane count")
         self._refresh_layers()
         self._names_changed()
+
+    def _tiers_changed(self, n: int):
+        if self.ga is None:
+            return
+        self.ga.params.n_tiers = n
+        self.ga.params.tier_rows = None          # search the split(s) again
+        self.ga._log("set_tiers", {"n_tiers": n, "reason": "gel rows setting"}, f"{n} gel row(s)")
+        if self.ga.lanes:
+            self.detect_lanes()
 
     def _names_changed(self):
         if not self.ga or not self.ed_names.text().strip():
@@ -636,9 +769,10 @@ class AutogelWidget(QWidget):
             self.detect_lanes()
         self._params()
         self.ga._profiles = {}
-        self.ga.detect_bands()
-        self._refresh_layers()
-        self.quantify(silent=True)
+        with self._busy("Detecting bands in all lanes"):
+            self.ga.detect_bands()
+            self._refresh_layers()
+            self.quantify(silent=True)
 
     def _selected_lane(self) -> int | None:
         if "lanes" in self.viewer.layers:
@@ -671,6 +805,7 @@ class AutogelWidget(QWidget):
         if self.ga is None:
             return
         pending, self._pending = self._pending, set()
+        lanes_changed = False
         if "lanes" in pending:
             shapes = self.viewer.layers["lanes"].data
             old = {(round(l.x), round(l.width), round(l.y0), round(l.y1)): l for l in self.ga.lanes}
@@ -682,8 +817,24 @@ class AutogelWidget(QWidget):
                 lanes.append(Lane(x=(x0 + x1) / 2, width=x1 - x0, y0=y0, y1=y1,
                                   name=prev.name if prev else "",
                                   source=prev.source if prev else "user"))
-            self.ga.set_lanes(lanes, reason="edited in viewer")
-        if "bands" in pending and "lanes" not in pending:
+            def geom(ls):
+                return sorted((round(l.x, 1), round(l.width, 1), round(l.y0), round(l.y1)) for l in ls)
+            # napari can emit a data event without a real change: only real lane edits count
+            if geom(lanes) != geom(self.ga.lanes):
+                self.ga.set_lanes(lanes, reason="edited in viewer")
+                lanes_changed = True
+        if "tiers" in pending and "gel rows" in self.viewer.layers:
+            rows = sorted(float(np.mean(np.asarray(ln)[:, 0])) for ln in self.viewer.layers["gel rows"].data)
+            if rows and [round(r) for r in rows] != [round(r) for r in (self.ga.params.tier_rows or [])]:
+                self.ga.set_tier_rows(rows, reason="split line moved in viewer")
+                self.sp_tiers.blockSignals(True)
+                self.sp_tiers.setValue(len(rows) + 1)
+                self.sp_tiers.blockSignals(False)
+                with self._busy("Re-detecting lanes and bands for the new gel rows"):
+                    self.ga.detect_lanes()
+                    self.ga.detect_bands()
+                lanes_changed = True
+        if "bands" in pending and not lanes_changed:
             old = {(b.lane, round(b.y0), round(b.y1)): b for b in self.ga.bands}
             bands, orphan = [], 0
             for s in self.viewer.layers["bands"].data:
@@ -738,6 +889,14 @@ class AutogelWidget(QWidget):
                 h = float(np.median([l.y1 - l.y0 for l in ga.lanes]))
                 lanes.text = {"string": "{name}", "anchor": "center", "color": col["lane_text"],
                               "size": 8, "translation": [-(h / 2 + 25), 0]}
+            if "gel rows" in self.viewer.layers:
+                tl = self.viewer.layers["gel rows"]
+                tl.data = []
+                W = ga.data.shape[1]
+                rows = ga.params.tier_rows if (ga.params.n_tiers or 1) > 1 else []
+                if rows:
+                    tl.add_lines([np.array([[r, 0], [r, W - 1]], float) for r in rows],
+                                 edge_color="#009E73", edge_width=4)
             bands = self.viewer.layers["bands"]
             bands.data = []
             if ga.bands:
@@ -875,6 +1034,32 @@ class AutogelWidget(QWidget):
             bits.append(f'<a href="{pre["source"]}">source</a>')
         self.lbl_ladder.setText("<br>".join(bits))
 
+    def _range_preset_changed(self, name: str):
+        if name in RESOLUTION_GUIDE:
+            lo, hi, _unit = RESOLUTION_GUIDE[name]
+        elif name.startswith("automatic"):
+            lo, hi = 0, 0
+        else:
+            return            # custom: keep the values the user types
+        for sp, v in ((self.sp_rmin, lo), (self.sp_rmax, hi)):
+            sp.blockSignals(True)
+            sp.setValue(v)
+            sp.blockSignals(False)
+        self._apply_range(reason=name)
+
+    def _range_values_changed(self, _=None):
+        self.cb_range.blockSignals(True)
+        self.cb_range.setCurrentText("custom")
+        self.cb_range.blockSignals(False)
+        self._apply_range(reason="custom")
+
+    def _apply_range(self, reason: str = ""):
+        if self.ga is None:
+            return
+        self.ga.set_size_range(self.sp_rmin.value() or None, self.sp_rmax.value() or None, reason=reason)
+        if self.ga.params.marker_lanes:
+            self.quantify(silent=True)
+
     def _save_ladder(self):
         name, ok = QInputDialog.getText(self, "Save ladder", "Name for this ladder:")
         if not ok or not name.strip():
@@ -979,11 +1164,57 @@ class AutogelWidget(QWidget):
             return
         try:
             self._apply_marker()
-            out = export_all(self.ga, d)
+            with self._busy("Exporting tables, profiles, image and report"):
+                out = export_all(self.ga, d)
         except (ValueError, OSError) as e:   # bad input or file locked (e.g. xlsx open in Excel)
             QMessageBox.critical(self, "autogel", f"Export failed:\n{e}")
             return
         self._info(f"exported to {out}")
+
+    def batch(self, images: list[str] | None = None, out_dir: str | None = None):
+        if not self._need():
+            return
+        from qtpy.QtWidgets import QProgressDialog
+
+        from .batch import run_batch
+        try:
+            self._apply_marker()
+        except ValueError as e:
+            QMessageBox.critical(self, "autogel", str(e))
+            return
+        if images is None:
+            images, _ = QFileDialog.getOpenFileNames(
+                self, "Gels to analyse with the current settings", os.path.dirname(self.ga.path),
+                "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp)")
+        if not images:
+            return
+        if out_dir is None:
+            out_dir = QFileDialog.getExistingDirectory(self, "Output folder for the batch",
+                                                       os.path.dirname(images[0]))
+        if not out_dir:
+            return
+        dlg = QProgressDialog("Batch analysis …", "Cancel", 0, len(images), self)
+        dlg.setWindowTitle("autogel batch")
+        dlg.setMinimumDuration(0)
+
+        def progress(i, n, name):
+            dlg.setValue(i)
+            dlg.setLabelText(f"Gel {i + 1} of {n}: {name}")
+            self.lbl_status.setText(f"⏳ Batch: gel {i + 1} of {n} ({name}) …")
+            from qtpy.QtWidgets import QApplication
+            QApplication.processEvents()
+            return not dlg.wasCanceled()
+
+        self.ga._log("batch", {"n_images": len(images), "out_dir": out_dir}, "started with these settings")
+        summary = run_batch(images, self.ga.params, out_dir, progress)
+        dlg.setValue(len(images))
+        counts = summary["status"].value_counts().to_dict()
+        msg = (f"Batch finished: {len(summary)} gel(s) - {counts.get('ok', 0)} ok, "
+               f"{counts.get('check', 0)} to check, {counts.get('error', 0)} error(s).\n"
+               f"Overview: {os.path.join(out_dir, 'batch_report.md')}")
+        self.lbl_status.setText("✔ " + msg.splitlines()[0])
+        QMessageBox.information(self, "autogel batch", msg)
+        return summary
 
     def save_session(self):
         if not self._need():
