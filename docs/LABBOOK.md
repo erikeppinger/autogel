@@ -78,12 +78,37 @@ replayable log.
 - Ladders not yet verified: GeneRuler 100 bp Plus / 100 bp (sizes and masses) and Bio-Rad
   Precision Plus (sizes). The NEB P7719 protein standard is missing; its band table wasn't
   readable on the product page.
-- ApE (A plasmid Editor) ships ladder definition files that could add many more ladders. Its
-  download needs approval first.
+- The ApE ladders have only sizes and relative brightness. They could be used to match ladder
+  bands automatically by brightness pattern; that isn't done yet.
 
 ---
 
 ## 6. Change log
+
+### 0.1.2 – 2026-11-18 – GUI usability, ApE ladder import
+- **Added** lane navigation in the profile panel: ◀ / ▶ buttons, a lane box, the mouse wheel
+  and the arrow keys (user request).
+- **Added** hover highlighting: the band under the mouse in the profile is outlined in the
+  image, together with its lane. It uses a separate `highlight` layer, so it never interferes
+  with edits (user request).
+- **Added** Easy / Expert mode, modelled on the simple/expert switch in PrusaSlicer. Easy hides
+  orientation, detection parameters, ladder editing, loads and display options. The choice is
+  stored with `QSettings` (user feedback: the panel was crowded).
+- **Added** `tools/import_ape_ladders.py` and `autogel/ladders_ape.json`:
+  - Download approved by the user: `ApE_win_current.zip` (18 MB) from the ApE download page.
+  - `ApE.exe` is a Tcl starpack. Its support files were extracted by decompressing the zlib
+    streams inside the file; the program was never executed.
+  - 67 ladders imported. Repeated sizes become `relative_intensity`, and doublets ≤ 4 % apart
+    are merged.
+  - Cross-check: ApE's NEB N3200, N3231 and N3232 agree exactly with the datasheet-verified
+    sizes. This is now a test.
+  - Curated entries take precedence by catalog number.
+- **Changed** the profile figure to constrained layout, which stops tight-layout warnings when
+  the dock is small.
+- **Checked**:
+  - ruff clean; `pytest` 51 passed
+  - scripted GUI test: lane stepping, clamping at the last lane, hover → highlight (2 shapes)
+    and leave → lane only, mode switch and persistence, edits unaffected
 
 ### 0.1.1 – 2026-11-18 – ladder library filled from vendor data
 - **Changed** `ladders.json` to format 2. Each entry now has:

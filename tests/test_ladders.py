@@ -36,3 +36,23 @@ def test_masses_add_up_to_reference_load(e):
 def test_default_preset_exists():
     from autogel.markers import DEFAULT_PRESET, PRESETS
     assert DEFAULT_PRESET in PRESETS and PRESETS[DEFAULT_PRESET]["verified"]
+
+
+def test_ape_import_agrees_with_curated_entries():
+    """ApE's NEB lists (doublets merged) must equal the sizes checked against NEB's datasheets."""
+    path = os.path.join(os.path.dirname(autogel.__file__), "ladders_ape.json")
+    with open(path, encoding="utf-8") as f:
+        ape = {e["catalog"]: e for e in json.load(f)["ladders"]}
+    curated = {e["catalog"]: e for e in LADDERS if e.get("verified") and e.get("catalog")}
+    common = set(ape) & set(curated)
+    assert {"N3200", "N3231", "N3232"} <= common
+    for c in common:
+        assert ape[c]["sizes"] == curated[c]["sizes"], c
+
+
+def test_library_merges_ape_without_duplicates():
+    from autogel.markers import load_library
+    lib = load_library()
+    cats = [e["catalog"] for e in lib.values() if e.get("catalog")]
+    assert len(cats) == len(set(cats))
+    assert len(lib) > 60

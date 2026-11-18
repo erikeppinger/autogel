@@ -24,20 +24,31 @@ def _user_library_path() -> str:
 
 
 def load_library() -> dict[str, dict]:
-    """Built-in ladders (autogel/ladders.json) plus the user's own (~/.autogel/ladders.json).
+    """Ladder library, in this order (later files override earlier ones by name):
 
-    User entries with the same name override built-in ones.
+    1. ``ladders.json``      curated, checked against vendor datasheets (with masses)
+    2. ``ladders_ape.json``  imported from ApE (sizes only, unverified); skipped when the same
+                             catalog number is already in (1)
+    3. ``~/.autogel/ladders.json``  the user's own ladders
     """
+    here = os.path.dirname(__file__)
     out: dict[str, dict] = {}
-    paths = [os.path.join(os.path.dirname(__file__), "ladders.json"), _user_library_path()]
-    for i, path in enumerate(paths):
+    curated_catalogs: set[str] = set()
+    sources = [(os.path.join(here, "ladders.json"), "builtin"),
+               (os.path.join(here, "ladders_ape.json"), "ape"),
+               (_user_library_path(), "user")]
+    for path, kind in sources:
         if not os.path.exists(path):
             continue
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         for e in data.get("ladders", []):
             e = dict(e)
-            e["user_defined"] = i == 1
+            if kind == "ape" and e.get("catalog") in curated_catalogs:
+                continue
+            if kind == "builtin" and e.get("catalog"):
+                curated_catalogs.add(e["catalog"])
+            e["user_defined"] = kind == "user"
             if len(e.get("masses") or []) not in (0, len(e["sizes"])):
                 e["masses"] = None
             out[e["name"]] = e

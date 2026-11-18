@@ -51,6 +51,19 @@ autogel gui                     # or: autogel gui path\to\gel.tif
 
 The **autogel** panel on the right guides you from top to bottom.
 
+**Easy / Expert mode** (switch at the top of the panel; your choice is remembered):
+- **Easy** shows only the essential steps: open the image, set the lane count, detect lanes and
+  bands, choose the ladder and marker lanes, quantify, and export.
+- **Expert** adds:
+  - orientation and skew controls
+  - background and detection settings
+  - re-detecting bands in a single lane
+  - editing ladder sizes and masses
+  - datasheet and sample loads
+  - display options
+
+  Automatic orientation and the default settings work in both modes.
+
 ### 3.1 Image
 - **Open image…** loads the gel. autogel automatically:
   - turns the image so the lanes run vertically with the wells on top
@@ -87,7 +100,12 @@ The **autogel** panel on the right guides you from top to bottom.
   - Resize a rectangle to change what is summed, delete it to drop the band, or draw a new
     rectangle inside a lane to add a band.
   - Bands you added or changed are shown in pink; detected bands in yellow.
-- The **lane profile** panel at the bottom shows the selected lane:
+- The **lane profile** panel at the bottom:
+  - **Change lane:** use the ◀ / ▶ buttons, the *lane* box, the **mouse wheel** over the plot,
+    or the **arrow keys** after clicking into the plot.
+  - **Hover over a peak** to outline that band and its lane in the image (pink).
+  - Selecting a lane or band in the image switches the plot to that lane.
+- The plot shows:
   - raw signal, background and corrected signal
   - shaded integration ranges
   - band numbers and sizes
@@ -126,6 +144,11 @@ Built-in ladders, as of 2026-11-18:
 | GeneRuler 1 kb Plus (SM1331), 1 kb (SM0311), DNA Ladder Mix (SM0331) | ng per 0.5 µg | ✔ |
 | PageRuler Prestained (26616), Plus Prestained (26619), Unstained (26614) | – | ✔ sizes |
 | GeneRuler 100 bp Plus (SM0321), 100 bp (SM0241), Bio-Rad Precision Plus Dual Color (1610374) | – | ⚠ count/range only |
+| 67 more DNA ladders imported from ApE (NEB, Invitrogen, Promega, Sigma, …) | – | ⚠ sizes only |
+
+The ApE ladders come from the free plasmid editor ApE by M. Wayne Davis. They have no ng
+values, so they're for sizing only. Where a ladder is in both lists, the checked entry is used.
+For the NEB ladders that are in both, ApE's sizes match the datasheets exactly.
 
 **Your own ladders:** edit the sizes and masses, then click **Save sizes/masses as my ladder…**.
 It is stored in `~/.autogel/ladders.json` and appears in the list from then on.

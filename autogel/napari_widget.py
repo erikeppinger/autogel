@@ -12,11 +12,14 @@ Every edit is applied automatically (short delay) and written to the log.
 """
 from __future__ import annotations
 
+import contextlib
 import os
+import warnings
 
 import numpy as np
-from qtpy.QtCore import Qt, QTimer
+from qtpy.QtCore import QSettings, Qt, QTimer
 from qtpy.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -53,6 +56,10 @@ PALETTES = {
 DEFAULT_PALETTE = "colour-blind safe (Okabe-Ito)"
 
 
+# the profile dock can be collapsed to ~0 px height; matplotlib then warns on every redraw
+warnings.filterwarnings("ignore", message="constrained_layout not applied")
+
+
 def _rect(y0, x0, y1, x1):
     return np.array([[y0, x0], [y0, x1], [y1, x1], [y1, x0]], float)
 
@@ -63,24 +70,125 @@ def _bbox(shape):
 
 
 class ProfileWidget(QWidget):
-    """Matplotlib view of one lane profile."""
+    """Matplotlib view of one lane profile with lane navigation and band hover.
+
+    Callbacks (set by the owner):
+      on_lane(i)       user stepped to lane i (buttons, spin box, wheel, arrow keys)
+      on_hover(band)   mouse is over band index ``band`` (global index) or None
+    """
 
     def __init__(self):
         super().__init__()
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
         from matplotlib.figure import Figure
-        self.fig = Figure(figsize=(6, 2.6))
+        self.on_lane = lambda i: None
+        self.on_hover = lambda b: None
+        self.ga = None
+        self.df = None
+        self.lane = 0
+        self._band_ids: list[int] = []
+        self._hover: int | None = None
+        self._hl = None
+
+        bar = QHBoxLayout()
+        self.btn_prev = QPushButton("◀")
+        self.btn_next = QPushButton("▶")
+        for btn in (self.btn_prev, self.btn_next):
+            btn.setFixedWidth(32)
+        self.sp_lane = QSpinBox()
+        self.sp_lane.setRange(1, 1)
+        self.sp_lane.setPrefix("lane ")
+        self.lbl = QLabel("")
+        hint = QLabel("wheel / ← → : change lane · hover a peak: highlight band")
+        hint.setStyleSheet("color: gray")
+        self.btn_prev.clicked.connect(lambda: self.step(-1))
+        self.btn_next.clicked.connect(lambda: self.step(+1))
+        self.sp_lane.valueChanged.connect(lambda v: self._goto(v - 1))
+        bar.addWidget(self.btn_prev)
+        bar.addWidget(self.sp_lane)
+        bar.addWidget(self.btn_next)
+        bar.addWidget(self.lbl)
+        bar.addStretch()
+        bar.addWidget(hint)
+
+        self.fig = Figure(figsize=(6, 2.6), layout="constrained")  # no warnings when the dock is small
         self.canvas = FigureCanvasQTAgg(self.fig)
+        self.canvas.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.ax = self.fig.add_subplot(111)
+        self.canvas.mpl_connect("motion_notify_event", self._on_move)
+        self.canvas.mpl_connect("axes_leave_event", lambda e: self._set_hover(None))
+        self.canvas.mpl_connect("figure_leave_event", lambda e: self._set_hover(None))
+        self.canvas.mpl_connect("scroll_event", lambda e: self.step(-1 if e.button == "up" else +1))
+        self.canvas.mpl_connect("key_press_event", self._on_key)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.addLayout(bar)
         lay.addWidget(self.canvas)
 
+    # ---------------------------------------------------------- navigation
+    def step(self, d: int):
+        if self.ga is not None and self.ga.lanes:
+            self._goto(int(np.clip(self.lane + d, 0, len(self.ga.lanes) - 1)))
+
+    def _goto(self, i: int):
+        if self.ga is None or not self.ga.lanes or i == self.lane:
+            return
+        self.show_lane(self.ga, i, self.df)
+        self.on_lane(i)
+
+    def _on_key(self, e):
+        if e.key in ("left", "up"):
+            self.step(-1)
+        elif e.key in ("right", "down"):
+            self.step(+1)
+
+    # --------------------------------------------------------------- hover
+    def _on_move(self, e):
+        if self.ga is None or e.inaxes is not self.ax or e.xdata is None:
+            self._set_hover(None)
+            return
+        hit = None
+        for k in self._band_ids:
+            b = self.ga.bands[k]
+            if b.y0 - 1 <= e.xdata <= b.y1 + 1:
+                hit = k
+                break
+        self._set_hover(hit)
+
+    def _set_hover(self, k):
+        if k == self._hover:
+            return
+        self._hover = k
+        if self._hl is not None:
+            with contextlib.suppress(ValueError):   # artist already gone after ax.clear()
+                self._hl.remove()
+            self._hl = None
+        if k is not None and self.ga is not None and k < len(self.ga.bands):
+            b = self.ga.bands[k]
+            self._hl = self.ax.axvspan(b.y0, b.y1, color="#CC79A7", alpha=0.35, zorder=0)
+        self.canvas.draw_idle()
+        self.on_hover(k)
+
+    # ---------------------------------------------------------------- draw
     def show_lane(self, ga: GelAnalysis | None, i: int, df=None):
+        self.ga, self.df = ga, df
+        self._hover, self._hl = None, None
         self.ax.clear()
-        if ga is not None and 0 <= i < len(ga.lanes):
-            plot_lane(ga, i, self.ax, df)
-        self.fig.tight_layout()
+        n = len(ga.lanes) if ga is not None else 0
+        self.lane = int(np.clip(i, 0, max(0, n - 1)))
+        self.sp_lane.blockSignals(True)
+        self.sp_lane.setRange(1, max(1, n))
+        self.sp_lane.setValue(self.lane + 1)
+        self.sp_lane.blockSignals(False)
+        self.btn_prev.setEnabled(self.lane > 0)
+        self.btn_next.setEnabled(self.lane < n - 1)
+        self._band_ids = []
+        if n:
+            plot_lane(ga, self.lane, self.ax, df)
+            self._band_ids = [k for k, b in enumerate(ga.bands) if b.lane == self.lane]
+            self.lbl.setText(ga.lanes[self.lane].name)
+        else:
+            self.lbl.setText("")
         self.canvas.draw_idle()
 
 
@@ -99,12 +207,32 @@ class AutogelWidget(QWidget):
         self._focus_lane: int | None = None
         self._build_ui()
         self.profile = ProfileWidget()
+        self.profile.on_lane = self._profile_lane_changed
+        self.profile.on_hover = self._profile_hover
         self.viewer.window.add_dock_widget(self.profile, name="lane profile", area="bottom")
+        self._apply_mode()
 
     # ================================================================== UI
     def _build_ui(self):
         inner = QWidget()
         lay = QVBoxLayout(inner)
+        self._expert_items: list = []   # (form_layout | None, widget) shown only in expert mode
+
+        # --- mode switch (like "simple / expert" in slicer software)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Mode:"))
+        self.btn_easy = QPushButton("Easy")
+        self.btn_expert = QPushButton("Expert")
+        self._mode_group = QButtonGroup(self)
+        for btn in (self.btn_easy, self.btn_expert):
+            btn.setCheckable(True)
+            self._mode_group.addButton(btn)
+            row.addWidget(btn)
+        row.addStretch()
+        lay.addLayout(row)
+        mode = str(QSettings("autogel", "autogel").value("mode", "easy"))
+        (self.btn_expert if mode == "expert" else self.btn_easy).setChecked(True)
+        self.btn_easy.toggled.connect(lambda _: self._apply_mode(save=True))
 
         # --- file
         g = QGroupBox("1  Image")
@@ -124,13 +252,16 @@ class AutogelWidget(QWidget):
         self.lbl_warn.setWordWrap(True)
         self.lbl_warn.setStyleSheet("color: orange")
         f.addWidget(self.lbl_warn)
+        orient = QWidget()
+        ol = QVBoxLayout(orient)
+        ol.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         for txt, fn in (("Rotate 90°", self._rot90), ("Flip ↔", self._flip_lr),
                         ("Flip ↕", self._flip_ud)):
             b = QPushButton(txt)
             b.clicked.connect(fn)
             row.addWidget(b)
-        f.addLayout(row)
+        ol.addLayout(row)
         row = QHBoxLayout()
         self.chk_invert = QCheckBox("dark bands (Coomassie)")
         self.chk_invert.toggled.connect(self._invert_toggled)
@@ -141,7 +272,9 @@ class AutogelWidget(QWidget):
         self.sp_angle.setSingleStep(0.25)
         self.sp_angle.editingFinished.connect(self._angle_changed)
         row.addWidget(self.sp_angle)
-        f.addLayout(row)
+        ol.addLayout(row)
+        f.addWidget(orient)
+        self._expert_items.append((None, orient))
         lay.addWidget(g)
 
         # --- lanes
@@ -180,12 +313,15 @@ class AutogelWidget(QWidget):
         self.sp_cov.setSingleStep(0.05)
         self.sp_cov.setValue(Params.min_coverage)
         f.addRow("min. lane coverage", self.sp_cov)
+        for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov):
+            self._expert_items.append((f, w))
         b = QPushButton("Detect bands (all lanes)")
         b.clicked.connect(self.detect_bands)
         f.addRow(b)
         b = QPushButton("Re-detect bands in selected lane")
         b.clicked.connect(self._redetect_selected)
         f.addRow(b)
+        self._expert_items.append((f, b))
         hint = QLabel("Edit in the viewer: select the 'lanes' or 'bands' layer, then move/resize/"
                       "delete rectangles, or draw new ones (rectangle tool). Band height = "
                       "integration range. Changes apply automatically and are logged.")
@@ -215,6 +351,8 @@ class AutogelWidget(QWidget):
         b = QPushButton("Save sizes/masses as my ladder…")
         b.clicked.connect(self._save_ladder)
         f.addRow(b)
+        for w in (self.ed_sizes, self.ed_masses, b):
+            self._expert_items.append((f, w))
         self.ed_marker_lanes = QLineEdit()
         self.ed_marker_lanes.setPlaceholderText("e.g. 1, 20")
         f.addRow("marker lane(s)", self.ed_marker_lanes)
@@ -235,6 +373,8 @@ class AutogelWidget(QWidget):
         self.ed_loads = QLineEdit()
         self.ed_loads.setPlaceholderText("sample µl per lane, e.g. 2:5, 3:5 (→ ng/µl)")
         f.addRow("sample loads", self.ed_loads)
+        for w in (self.sp_ref, self.ed_loads):
+            self._expert_items.append((f, w))
         b = QPushButton("Calibrate && quantify")
         b.clicked.connect(self.quantify)
         f.addRow(b)
@@ -256,6 +396,7 @@ class AutogelWidget(QWidget):
         self.chk_all_labels.toggled.connect(lambda _: self._update_band_labels())
         f.addRow(self.chk_all_labels)
         lay.addWidget(g)
+        self._expert_items.append((None, g))
 
         # --- results
         g = QGroupBox("5  Results")
@@ -281,6 +422,16 @@ class AutogelWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(sc)
         self.setMinimumWidth(380)
+
+    def _apply_mode(self, save: bool = False):
+        expert = self.btn_expert.isChecked()
+        for form, w in self._expert_items:
+            if form is None:
+                w.setVisible(expert)
+            else:
+                form.setRowVisible(w, expert)
+        if save:
+            QSettings("autogel", "autogel").setValue("mode", "expert" if expert else "easy")
 
     # ============================================================ helpers
     def _params(self) -> Params:
@@ -348,7 +499,7 @@ class AutogelWidget(QWidget):
             self.chk_invert.setChecked(bool(ga.gel.orientation.get("invert")))
             self.chk_invert.blockSignals(False)
             self.sp_angle.setValue(ga.gel.orientation.get("angle", 0.0))
-            for name in ("gel", "saturated", "lanes", "bands"):
+            for name in ("gel", "saturated", "highlight", "lanes", "bands"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
             a = ga.data
@@ -357,6 +508,8 @@ class AutogelWidget(QWidget):
             self.viewer.add_image(ga.gel.raw_max.astype(np.float32), name="saturated",
                                   colormap=self._sat_colormap(), blending="translucent",
                                   contrast_limits=(0, 1), opacity=1.0)
+            self.viewer.add_shapes(name="highlight", shape_type="rectangle", edge_color="#CC79A7",
+                                   face_color="transparent", edge_width=6, opacity=1.0)
             lanes = self.viewer.add_shapes(name="lanes", shape_type="rectangle",
                                            edge_color=self.colors["lane"],
                                            face_color="transparent", edge_width=2)
@@ -615,7 +768,9 @@ class AutogelWidget(QWidget):
         if i is not None and i != self._focus_lane:
             self._focus_lane = i
             self._update_band_labels()
-        self.profile.show_lane(self.ga, 0 if i is None else i, self.df)
+        lane = self._focus_lane if self._focus_lane is not None else 0
+        self.profile.show_lane(self.ga, lane, self.df)
+        self._highlight(lane, None)
 
     def _band_selected(self):
         if self.ga is None or "bands" not in self.viewer.layers:
@@ -626,7 +781,42 @@ class AutogelWidget(QWidget):
             if lane != self._focus_lane:
                 self._focus_lane = lane
                 self._update_band_labels()
-            self.profile.show_lane(self.ga, lane, self.df)
+                self.profile.show_lane(self.ga, lane, self.df)
+            self._highlight(lane, sel[0])
+
+    def _profile_lane_changed(self, i: int):
+        """Lane stepped in the profile panel (buttons, wheel, keys)."""
+        self._focus_lane = i
+        self._update_band_labels()
+        self._highlight(i, None)
+
+    def _profile_hover(self, band: int | None):
+        lane = self.profile.lane if self.ga and self.ga.lanes else None
+        self._highlight(lane, band)
+
+    def _highlight(self, lane: int | None, band: int | None):
+        """Outline the current lane (and hovered band) in the image; never touches edits."""
+        if self.ga is None or "highlight" not in self.viewer.layers:
+            return
+        hl = self.viewer.layers["highlight"]
+        shapes, widths = [], []
+        if lane is not None and 0 <= lane < len(self.ga.lanes):
+            l = self.ga.lanes[lane]
+            shapes.append(_rect(l.y0, l.x0 - 3, l.y1, l.x1 + 3))
+            widths.append(3)
+        if band is not None and 0 <= band < len(self.ga.bands):
+            b = self.ga.bands[band]
+            l = self.ga.lanes[b.lane]
+            shapes.append(_rect(b.y0 - 3, l.x0 - 6, b.y1 + 4, l.x1 + 6))
+            widths.append(7)
+        self._updating = True
+        try:
+            hl.data = []
+            if shapes:
+                hl.add_rectangles(shapes, edge_width=widths, edge_color="#CC79A7",
+                                  face_color="transparent")
+        finally:
+            self._updating = False
 
     # ------------------------------------------------------- calibration
     def _preset_changed(self, name):
@@ -643,6 +833,8 @@ class AutogelWidget(QWidget):
             bits.append("your ladder")
         elif pre.get("verified"):
             bits.append(f"✔ checked against vendor data {pre.get('checked', '')}")
+        elif pre.get("source_db") == "ApE":
+            bits.append("⚠ imported from ApE (sizes only) - compare with your datasheet")
         else:
             bits.append("⚠ not yet verified - compare with your datasheet")
         if ref.get("text"):
