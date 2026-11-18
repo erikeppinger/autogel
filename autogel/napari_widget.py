@@ -42,6 +42,7 @@ from qtpy.QtWidgets import (
 
 from .analysis import GelAnalysis, Lane, Params
 from .export import export_all, plot_lane
+from .labels import declutter, plan_labels
 from .markers import DEFAULT_PRESET, PRESETS, parse_sizes, save_user_ladder
 
 # Okabe & Ito (2008) colour-universal-design palette: distinguishable with
@@ -49,9 +50,9 @@ from .markers import DEFAULT_PRESET, PRESETS, parse_sizes, save_user_ladder
 PALETTES = {
     "colour-blind safe (Okabe-Ito)": {"lane": "#56B4E9", "marker": "#E69F00", "band": "#F0E442",
                                       "user_band": "#CC79A7", "saturated": "#D55E00",
-                                      "lane_text": "#FFFFFF", "band_text": "#F0E442"},
+                                      "lane_text": "#FFFFFF", "band_text": "#F0E442", "label_text": "#FFFFFF"},
     "classic": {"lane": "cyan", "marker": "gold", "band": "lime", "user_band": "magenta",
-                "saturated": "red", "lane_text": "yellow", "band_text": "lime"},
+                "saturated": "red", "lane_text": "yellow", "band_text": "lime", "label_text": "white"},
 }
 DEFAULT_PALETTE = "colour-blind safe (Okabe-Ito)"
 
@@ -499,7 +500,7 @@ class AutogelWidget(QWidget):
             self.chk_invert.setChecked(bool(ga.gel.orientation.get("invert")))
             self.chk_invert.blockSignals(False)
             self.sp_angle.setValue(ga.gel.orientation.get("angle", 0.0))
-            for name in ("gel", "saturated", "highlight", "lanes", "bands"):
+            for name in ("gel", "saturated", "highlight", "lanes", "bands", "sizes left", "sizes right"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
             a = ga.data
@@ -516,11 +517,27 @@ class AutogelWidget(QWidget):
             bands = self.viewer.add_shapes(name="bands", shape_type="rectangle",
                                            edge_color=self.colors["band"],
                                            face_color="transparent", edge_width=1.5)
+            # size labels live on their own (non-editable) point layers beside the lanes
+            for name, anchor in (("sizes left", "upper_right"), ("sizes right", "upper_left")):
+                self.viewer.add_points(np.empty((0, 2)), name=name, size=1,
+                                            face_color="transparent", border_color="transparent",
+                                            border_width=0,
+                                            text={"string": "{label}", "anchor": anchor,
+                                                  "color": self.colors["label_text"], "size": 8},
+                                            features={"label": np.empty(0, dtype=str)})
+            self.viewer.layers.selection.active = bands
             lanes.events.data.connect(lambda e: self._schedule("lanes"))
             bands.events.data.connect(lambda e: self._schedule("bands"))
             lanes.events.highlight.connect(lambda e: self._lane_selected())
             bands.events.highlight.connect(lambda e: self._band_selected())
             self.viewer.reset_view()
+            if not getattr(self, "_zoom_hooked", False):
+                self._zoom_timer = QTimer(self)
+                self._zoom_timer.setSingleShot(True)
+                self._zoom_timer.setInterval(120)
+                self._zoom_timer.timeout.connect(self._place_labels)
+                self._camera().events.zoom.connect(lambda e: self._zoom_timer.start())
+                self._zoom_hooked = True
         finally:
             self._updating = False
         self.lbl_file.setText(os.path.basename(ga.path) + f"  ({a.shape[1]}×{a.shape[0]} px, {ga.gel.dtype})")
@@ -724,44 +741,55 @@ class AutogelWidget(QWidget):
             bands = self.viewer.layers["bands"]
             bands.data = []
             if ga.bands:
+                from matplotlib.colors import to_rgba
+                edge = [col["band"] if b.source == "auto" else col["user_band"] for b in ga.bands]
+                # light fill: short (faint) bands stay visible as a box when zoomed out,
+                # instead of their two edges merging into one line
+                face = [to_rgba(c, 0.18) for c in edge]
                 bands.add_rectangles([_rect(b.y0, ga.lanes[b.lane].x0, b.y1 + 1, ga.lanes[b.lane].x1)
-                                      for b in ga.bands],
-                                     edge_color=[col["band"] if b.source == "auto" else col["user_band"]
-                                                 for b in ga.bands])
+                                      for b in ga.bands], edge_color=edge, face_color=face)
         finally:
             self._updating = False
         self._update_band_labels()
         self._lane_selected()
 
     def _update_band_labels(self):
-        """Size labels only where readable: marker lanes and the selected lane
-        (or every band when 'label all bands' is ticked)."""
-        if self.ga is None or "bands" not in self.viewer.layers:
+        """Size labels for marker lanes and the selected lane (or all bands when ticked).
+        They sit beside the lane, never on the band; overlapping ones are hidden for the
+        current zoom (reference bands first) and come back when you zoom in."""
+        if self.ga is None or "sizes left" not in self.viewer.layers:
             return
-        ga = self.ga
-        bands = self.viewer.layers["bands"]
-        if not ga.bands or len(bands.data) != len(ga.bands):
-            return
-        sizes = {}
-        if self.df is not None and len(self.df):
-            sc = [c for c in self.df.columns if c.startswith("size_")]
-            if sc:
-                sizes = {(r["lane"] - 1, r["y_px"]): r[sc[0]] for _, r in self.df.iterrows()}
-        show = {L - 1 for L in ga.params.marker_lanes}
+        show = {L - 1 for L in self.ga.params.marker_lanes}
         if self._focus_lane is not None:
             show.add(self._focus_lane)
-        labels = []
-        for b in ga.bands:
-            v = sizes.get((b.lane, round(b.y, 1)))
-            ok = self.chk_all_labels.isChecked() or b.lane in show
-            labels.append(f"{v:.0f}" if ok and v is not None and np.isfinite(v) else "")
-        self._updating = True
-        try:
-            bands.features = {"label": labels}
-            bands.text = {"string": "{label}", "anchor": "center", "color": self.colors["band_text"],
-                          "size": 7}
-        finally:
-            self._updating = False
+        if self.chk_all_labels.isChecked():
+            show = set(range(len(self.ga.lanes)))
+        self._labels = plan_labels(self.ga, self.df, show)
+        self._place_labels()
+
+    def _camera(self):
+        scene = getattr(self.viewer, "scene", None)   # napari >= 0.9; older: viewer.camera
+        return scene.camera if scene is not None and hasattr(scene, "camera") else self.viewer.camera
+
+    def _place_labels(self):
+        if self.ga is None or "sizes left" not in self.viewer.layers:
+            return
+        labels = getattr(self, "_labels", [])
+        zoom = max(float(self._camera().zoom), 1e-6)         # screen px per image px
+        font_px = 13.0                                         # 8 pt text incl. line spacing
+        keep = declutter(labels, font_px / zoom)
+        dy = 0.4 * font_px / zoom   # napari draws the text just above its anchor point: shift down
+        for name, side in (("sizes left", "left"), ("sizes right", "right")):
+            sel = [lab for lab, k in zip(labels, keep) if k and lab.side == side]
+            layer = self.viewer.layers[name]
+            self._updating = True
+            try:
+                layer.data = np.array([[lab.y + dy, lab.x] for lab in sel]).reshape(-1, 2)
+                layer.features = {"label": [lab.text for lab in sel]}
+                layer.text.color = self.colors["label_text"]
+                layer.refresh_text()
+            finally:
+                self._updating = False
 
     def _lane_selected(self):
         i = self._selected_lane()

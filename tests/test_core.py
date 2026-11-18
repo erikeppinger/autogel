@@ -278,3 +278,23 @@ def test_user_ladder_library(tmp_path, monkeypatch):
     monkeypatch.delenv("AUTOGEL_HOME")
     markers.PRESETS.clear()
     markers.PRESETS.update(markers.load_library())
+
+
+def test_label_format_and_declutter(gel):
+    from autogel.labels import declutter, fmt_size, plan_labels
+    assert [fmt_size(s) for s in (10002, 8001, 1517, 1000, 900)] == ["10 kb", "8.0 kb", "1.5 kb", "1.0 kb", "900"]
+    assert fmt_size(37, "kDa") == "37"
+    ga = run(gel, n_lanes=10)
+    ga.set_marker([1, 10], sizes=SIZES)
+    df = ga.quantify()
+    labs = plan_labels(ga, df, {0, 9, 4})
+    sides = {(l.lane, l.side) for l in labs}
+    assert (0, "left") in sides and (9, "right") in sides and (4, "right") in sides
+    for l in labs:                           # never on the band: outside the lane edges
+        lane = ga.lanes[l.lane]
+        assert l.x < lane.x0 or l.x > lane.x1
+    keep_far = declutter(labs, 1.0)
+    keep_near = declutter(labs, 400.0)
+    assert all(keep_far) and sum(keep_near) < len(labs)
+    # each lane side keeps at least its highest-priority label
+    assert {(l.lane, l.side) for l, k in zip(labs, keep_near) if k} == sides

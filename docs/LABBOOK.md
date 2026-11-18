@@ -85,6 +85,25 @@ replayable log.
 
 ## 6. Change log
 
+### 0.1.3 – 2026-11-18 – readable size labels, visible band boxes
+- **Changed** size labels (user feedback: labels sat on the bands and overlapped):
+  - New `autogel/labels.py`, shared by the viewer and the exported PNG.
+  - Labels sit *beside* the lane, never on the band: marker lanes in the left half are labelled
+    on their left, all other lanes on their right. They live on their own point layers
+    (`sizes left`, `sizes right`).
+  - Sizes are written as 10 kb, 8.0 kb, 1.5 kb, 900.
+  - Zoom-aware decluttering: labels closer than one text line at the current zoom are hidden,
+    reference bands (3 / 1 / 0.5 kb) first, then by band volume. They reappear when you zoom
+    in.
+- **Changed** band rectangles to have a light translucent fill. Faint, short bands (11–14 px,
+  e.g. Test_1 lane 7 at row 939) showed as a single line when zoomed out, because their top and
+  bottom edges merged; bright bands hid one edge (user question).
+- **Changed** to use `viewer.scene.camera` (`viewer.camera` is deprecated in napari 0.10).
+- **Known**: the selected sample lane's labels can overlap the neighbouring lane's bands, because
+  there is no free space between sample lanes.
+- **Checked**: ruff clean; `pytest` 52 passed (new label test); rendered viewer at fit and 3× zoom
+  and the exported PNG.
+
 ### 0.1.2 – 2026-11-18 – GUI usability, ApE ladder import
 - **Added** lane navigation in the profile panel: ◀ / ▶ buttons, a lane box, the mouse wheel
   and the arrow keys (user request).

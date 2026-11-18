@@ -13,6 +13,7 @@ import pandas as pd  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 from .analysis import GelAnalysis  # noqa: E402
+from .labels import declutter, plan_labels  # noqa: E402
 
 
 def _display(a: np.ndarray) -> tuple[float, float]:
@@ -81,19 +82,17 @@ def annotated_image(ga: GelAnalysis, path: str, df: pd.DataFrame | None = None):
                     outline="#E69F00" if i in marker else "#56B4E9", width=2)
         d.text((l.x, max(0, l.y0 - 4)), l.name, fill="white", font=font, anchor="ms",
                stroke_width=2, stroke_fill="black")
-    sizes = {}
-    if df is not None and len(df):
-        sc = [c for c in df.columns if c.startswith("size_")]
-        if sc:
-            sizes = {(r.lane - 1, r.y_px): r[sc[0]] for _, r in df.iterrows()}
     for b in ga.bands:
         l = ga.lanes[b.lane]
         d.rectangle([l.x0, b.y0, l.x1, b.y1 + 1],
                     outline="#F0E442" if b.source == "auto" else "#CC79A7", width=1)
-        s = sizes.get((b.lane, round(b.y, 1)))
-        if s is not None and np.isfinite(s):
-            d.text((l.x1 + 2, b.y), f"{s:.0f}", fill="#F0E442", font=small, anchor="lm",
-                   stroke_width=2, stroke_fill="black")
+    # size labels beside the lanes (markers outward, samples to the right), decluttered
+    labels = plan_labels(ga, df, set(range(len(ga.lanes))))
+    line_h = small.getbbox("0")[3] + 3 if hasattr(small, "getbbox") else 14
+    for lab, keep in zip(labels, declutter(labels, line_h)):
+        if keep:
+            d.text((lab.x, lab.y), lab.text, fill="#E69F00" if lab.marker else "white", font=small,
+                   anchor="rm" if lab.side == "left" else "lm", stroke_width=2, stroke_fill="black")
     im.save(path, optimize=False)
 
 
