@@ -100,6 +100,36 @@ replayable log.
 
 ## 6. Change log
 
+### 0.4.1 – 2026-11-18 – macOS installer, license, download instructions
+User questions: how to get the ZIP, the license, and how Mac users install.
+
+- **License:** BSD-3-Clause, copyright Erik Eppinger. All dependencies are permissive (BSD, MIT,
+  PSF, MIT-CMU) except PyQt6 (GPL-3) and Qt (LGPL-3), which are installed by pip on the user's
+  machine, not shipped with autogel.
+- **Download instructions:** direct ZIP link, the green Code button, Extract All and the
+  nested `autogel-main\autogel-main` folder, the Windows "run this file?" prompt.
+- **`install_mac.command`** (double-click on macOS; also runs on Linux without the app icon):
+  - finds Python ≥ 3.10, preferring 3.12; Apple's `/usr/bin/python3` stub is only asked when
+    the Command Line Tools are installed, otherwise it pops up an install dialog
+  - opens python.org if no Python is found
+  - venv in `~/Library/Application Support/autogel`
+  - creates a minimal `~/Applications/autogel.app`; it's made locally, so Gatekeeper doesn't
+    block it
+  - writes an uninstaller
+  - The downloaded `.command` file itself is blocked the first time (unidentified developer);
+    the manual explains *Open Anyway* (macOS 15) / right-click → Open (≤ 14) and the
+    Terminal fallback.
+- **certifi** is now a dependency: python.org's macOS Python has no root certificates, so the
+  in-app *Update library* download would fail there.
+- **CI `installer check`:**
+  - runs the installers on macOS, Ubuntu and Windows exactly as from the ZIP
+  - then the installed CLI, a live library update, the full test suite in the installed
+    environment (Qt offscreen) and the uninstaller
+- **Checked locally:**
+  - WSL Ubuntu (Python 3.14 without `venv`): clear error, exit code 1, no half-built
+    environment left behind
+  - the Windows ZIP route was already checked in 0.4.0
+
 ### 0.4.0 – 2026-11-18 – ladder library sharing, ladder recognition, mass curve, noise floor, overlapping and curved lanes
 User request: items 1, 2, 3, 4 and 7 of the open-points list, plus a way for users to add ladders
 to the library ("a mask for git") that ships with a release or can be updated from the tool.

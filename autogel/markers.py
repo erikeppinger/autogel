@@ -230,8 +230,14 @@ def update_library(url: str = LIBRARY_URL, timeout: float = 20.0) -> tuple[int, 
     import urllib.request
     if not url.startswith("https://"):
         raise ValueError("library URL must start with https://")
+    import ssl
+    try:        # python.org's macOS Python ships without root certificates; certifi has them
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        ctx = ssl.create_default_context()
     req = urllib.request.Request(url, headers={"User-Agent": "autogel"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - https only, checked above
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:  # noqa: S310 - https only
         raw = r.read(MAX_LIBRARY_BYTES + 1)
     return _store_update(raw, url, _dt.datetime.now().isoformat(timespec="seconds"))
 

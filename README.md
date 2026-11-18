@@ -26,6 +26,21 @@ interactive **napari** editor for corrections. Built on numpy/scipy, no GPU need
 4. Wait a few minutes (about 300 MB download). Then start autogel from the new desktop icon
    *autogel*.
 
+**macOS, no command line:**
+1. If you don't have it yet, install **Python 3.12** from
+   [python.org/downloads/macos](https://www.python.org/downloads/macos/) (the *macOS 64-bit
+   universal2 installer*).
+2. Download the same [autogel-main.zip](https://github.com/erikeppinger/autogel/archive/refs/heads/main.zip);
+   Safari unzips it into *Downloads* (otherwise double-click the ZIP).
+3. In the folder `autogel-main`, double-click **`install_mac.command`**. The first time, macOS
+   blocks it because it isn't from the App Store: click **Done**, open **System Settings →
+   Privacy & Security**, scroll down and click **Open Anyway** (macOS 14 and older: right-click
+   the file → **Open** → **Open**).
+4. A Terminal window shows the progress (a few minutes). Then start **autogel** from Launchpad or
+   Spotlight, or drag it from *your home folder → Applications* to the Dock.
+
+**Linux:** see the developer install below (`pip install -e .[gui]`).
+
 ```bash
 pip install -e .[gui]                                     # developers
 autogel gui                                               # interactive

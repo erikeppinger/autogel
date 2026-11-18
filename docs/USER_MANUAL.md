@@ -43,6 +43,41 @@ hundred MB of RAM.
 | Uninstall | `%LOCALAPPDATA%\autogel\Uninstall autogel.bat` (your own ladders in `%USERPROFILE%\.autogel` are kept) |
 | Proxy / no internet | the installer needs internet access for the download; ask IT for the proxy setting (`pip` honours `HTTPS_PROXY`) |
 
+### macOS – double-click installer
+1. **Python 3.10 or newer** is needed. macOS doesn't bring a usable one, so install
+   **Python 3.12** from <https://www.python.org/downloads/macos/> (the *macOS 64-bit universal2
+   installer*, for Intel and Apple-silicon Macs). If you start the autogel installer without it,
+   it opens that page for you.
+2. **Download** `autogel-main.zip` as for Windows (direct link
+   <https://github.com/erikeppinger/autogel/archive/refs/heads/main.zip>, or **<> Code →
+   Download ZIP**). Safari unzips it automatically into *Downloads*; otherwise double-click the
+   ZIP.
+3. Open the folder `autogel-main` and double-click **`install_mac.command`**.
+   - **The first time, macOS blocks it** ("Apple could not verify …"), because it doesn't come
+     from the App Store or a registered developer.
+     - **macOS 15 (Sequoia) and newer:** click **Done**, open **System Settings → Privacy &
+       Security**, scroll down to the message about `install_mac.command` and click **Open
+       Anyway**, then confirm.
+     - **macOS 14 and older:** right-click (or Control-click) the file → **Open** → **Open**.
+   - **If that doesn't work:** open *Terminal* (Spotlight: "Terminal"), type `bash ` (with a
+     space), drag `install_mac.command` into the Terminal window and press Return.
+4. A Terminal window shows the progress. The installer:
+   - creates its own environment in `~/Library/Application Support/autogel` and downloads
+     autogel's components there (about 300 MB, a few minutes; no administrator rights)
+   - creates the app **autogel** in the *Applications* folder of your home folder
+5. Start **autogel** from Launchpad or Spotlight, or drag it to the Dock. The app is created on
+   your Mac, so macOS doesn't block it.
+
+| | |
+|---|---|
+| Update | download the new version, run `install_mac.command` again |
+| Uninstall | double-click `~/Library/Application Support/autogel/Uninstall autogel.command` (your own ladders in `~/.autogel` are kept) |
+
+### Linux
+Use the developer installation below (`pip install -e .[gui]`). On Debian/Ubuntu install the
+package `python3-venv` first. `install_mac.command` also works on Linux (without the app
+icon): `bash install_mac.command`.
+
 ### Developers (command line)
 
 Requires Python ≥ 3.10.
