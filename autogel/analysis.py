@@ -33,6 +33,10 @@ class Params:
     smooth_sigma: float = 1.5           # px, profile smoothing for band detection only
     min_snr: float = 6.0                # band prominence in noise SDs
     min_rel_height: float = 0.01        # band prominence relative to brightest band in lane
+    min_gel_rel: float = 0.0            # optional: band peak relative to the gel's strong bands
+                                        # (95th pct.). ~0.03 removes noise "bands" in empty lanes of
+                                        # noisy/JPEG images, but would also drop faint ladder bands
+                                        # on gels with very bright samples - therefore off by default
     min_band_distance: int = 6          # px
     skip_well_px: int = 25              # rows below the well ignored by band detection
     bound_frac: float = 0.1             # band edges where signal falls to this fraction of peak
@@ -261,15 +265,27 @@ class GelAnalysis:
         # every lane must count equally: cap the profile at the typical lane height, otherwise
         # two teeth inside one very bright lane (ladder) can beat the true comb
         c_raw = c
-        pk, _ = signal.find_peaks(ndimage.gaussian_filter1d(c, 2), prominence=0.02)
-        if len(pk) >= 2:
-            c = np.minimum(c, float(np.median(c[pk])))
-        s_lo = max(6.0, W / (n + 1) / 1.8)
+        # local normalisation: divide by a sliding maximum (floored at 20 % of the global max so
+        # empty background stays low). Bright and dim halves of a gel then weigh the same, and
+        # a tight comb squeezed into the bright half no longer wins.
+        env = ndimage.maximum_filter1d(ndimage.gaussian_filter1d(c, 2), max(9, W // 8))
+        c = c / np.maximum(env, 0.2 * float(c.max()) + 1e-12)
+        # the gel may fill only part of the frame, so small spacings must be allowed ...
+        s_lo = max(6.0, W / 150)
         s_hi = (W - 1) / (n - 1)
+        # ... but then a narrow comb squeezed into part of the gel can out-score the true one.
+        # Coverage term: the comb must span the region where the lanes' signal is.
+        # signal region = 10th-90th percentile of the profile's mass (sparse noise, specks and
+        # tray edges outside the gel hardly shift it)
+        mass = np.cumsum(np.clip(c_raw, 0, None))
+        if mass[-1] > 0:
+            sig_span = float(np.searchsorted(mass, 0.9 * mass[-1]) - np.searchsorted(mass, 0.1 * mass[-1]))
+        else:
+            sig_span = float(W)
         teeth = np.arange(n)
         best = (-np.inf, s_lo, 0.0)
         cache: dict[float, np.ndarray] = {}
-        for sp in np.arange(s_lo, s_hi, 0.25):
+        for sp in np.arange(s_lo, s_hi, 0.25 if s_hi - s_lo < 150 else 0.5):
             sig = round(max(1.0, sp / 8) * 2) / 2
             if sig not in cache:
                 cache[sig] = ndimage.gaussian_filter1d(c, sig)
@@ -279,7 +295,8 @@ class GelAnalysis:
                 continue
             pos = x0[:, None] + sp * teeth[None, :]
             mid = pos[:, :-1] + sp / 2
-            score = np.interp(pos, x, cs).mean(1) - np.interp(mid, x, cs).mean(1)
+            coverage = min(1.0, (n - 1) * sp / max(sig_span * 0.85, 1.0))
+            score = (np.interp(pos, x, cs).mean(1) - np.interp(mid, x, cs).mean(1)) * coverage
             k = int(np.argmax(score))
             if score[k] > best[0]:
                 best = (float(score[k]), float(sp), float(x0[k]))
@@ -503,6 +520,7 @@ class GelAnalysis:
         idx = range(len(self.lanes)) if lanes is None else lanes
         self.bands = [b for b in self.bands if b.lane not in set(idx)]
         total = rejected = 0
+        new: list[tuple[Band, float]] = []
         for i in idx:
             pr = self.lane_profile(i)
             corr = pr["corr"]
@@ -523,16 +541,38 @@ class GelAnalysis:
                 if self.coverage(b) < self.params.min_coverage:
                     rejected += 1
                     continue
-                self.bands.append(b)
-                total += 1
+                new.append((b, float(sm[p])))
+        # gel-wide floor: compare with the strong bands of the whole gel (incl. bands kept from
+        # other lanes) - a lane-relative threshold cannot judge a lane that holds only noise
+        weak = 0
+        if new and self.params.min_gel_rel > 0:
+            others = [self._peak_height(b) for b in self.bands]
+            ref = float(np.percentile([h for _, h in new] + others, 95))
+            keep = [(b, h) for b, h in new if h >= self.params.min_gel_rel * ref]
+            weak = len(new) - len(keep)
+            new = keep
+        for b, _ in new:
+            self.bands.append(b)
+            total += 1
         self.bands.sort(key=lambda b: (b.lane, b.y))
         self._log("detect_bands", {"lanes": None if lanes is None else [l + 1 for l in lanes],
                                    "bg_method": self.params.bg_method, "bg_radius": self.params.bg_radius,
                                    "min_snr": self.params.min_snr, "min_rel_height": self.params.min_rel_height,
+                                   "min_gel_rel": self.params.min_gel_rel,
                                    "skip_well_px": self.params.skip_well_px},
                   f"{total} bands ({rejected} rejected as narrower than "
-                  f"{self.params.min_coverage:.0%} of lane width: dust/specks)")
+                  f"{self.params.min_coverage:.0%} of lane width: dust/specks"
+                  + (f"; {weak} below {self.params.min_gel_rel:.0%} of the gel's strong bands" if weak else "")
+                  + ")")
         return self.bands
+
+    def _peak_height(self, b: Band) -> float:
+        """Smoothed background-corrected profile value at the band's peak row."""
+        pr = self.lane_profile(b.lane)
+        if not len(pr["y"]):
+            return 0.0
+        sm = ndimage.gaussian_filter1d(pr["corr"], self.params.smooth_sigma)
+        return float(sm[int(np.clip(round(b.y - pr["y"][0]), 0, len(sm) - 1))])
 
     def coverage(self, b: Band) -> float:
         """Fraction of the lane's columns that carry the band (bands span the lane, dust does not)."""

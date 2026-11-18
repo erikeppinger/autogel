@@ -11,3 +11,4 @@ dist/
 !tests/data/*.tif
 gallery_out/
 _install_test/
+benchmark_data/

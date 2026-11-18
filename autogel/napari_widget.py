@@ -340,7 +340,16 @@ class AutogelWidget(QWidget):
         self.sp_cov.setSingleStep(0.05)
         self.sp_cov.setValue(Params.min_coverage)
         f.addRow("min. lane coverage", self.sp_cov)
-        for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov):
+        self.sp_gelrel = QDoubleSpinBox()
+        self.sp_gelrel.setRange(0, 0.5)
+        self.sp_gelrel.setSingleStep(0.01)
+        self.sp_gelrel.setValue(Params.min_gel_rel)
+        self.sp_gelrel.setSpecialValueText("off")
+        self.sp_gelrel.setToolTip("Ignore bands weaker than this fraction of the gel's strong bands. "
+                                  "About 0.03 removes noise 'bands' in empty lanes of noisy or JPEG images. "
+                                  "Leave off if faint ladder bands sit next to very bright samples.")
+        f.addRow("min. height vs. gel", self.sp_gelrel)
+        for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov, self.sp_gelrel):
             self._expert_items.append((f, w))
         b = QPushButton("Detect bands (all lanes)")
         b.clicked.connect(self.detect_bands)
@@ -541,6 +550,7 @@ class AutogelWidget(QWidget):
             p.bg_radius = self.sp_radius.value()
         p.min_snr = self.sp_snr.value()
         p.min_coverage = self.sp_cov.value()
+        p.min_gel_rel = self.sp_gelrel.value()
         p.n_lanes = self.sp_lanes.value() or None
         p.n_tiers = self.sp_tiers.value()
         p.invert = self.chk_invert.isChecked()
@@ -665,6 +675,7 @@ class AutogelWidget(QWidget):
         self.cb_bg.setCurrentText(p.bg_method)
         self.sp_snr.setValue(p.min_snr)
         self.sp_cov.setValue(p.min_coverage)
+        self.sp_gelrel.setValue(p.min_gel_rel)
         if p.marker_preset in PRESETS:
             self.cb_preset.setCurrentText(p.marker_preset)
         if p.marker_sizes:

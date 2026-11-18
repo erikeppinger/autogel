@@ -89,6 +89,71 @@ replayable log.
 
 ## 6. Change log
 
+### 0.2.1 – 2026-11-18 – benchmark on 95 hand-labelled real gels
+**Data:** GelGenie dataset (Zenodo 10.5281/zenodo.14641949).
+- Downloaded with the user's OK: `quantitation_ladder_gels` (35), `nathan_gels` (37, JPEG) and
+  `external_gels` (25, five other labs). 97 images, MD5s verified, kept locally in
+  `benchmark_data/` (not in the repository).
+- Of the 97 images, 95 have usable masks.
+
+**Benchmark (`tools/benchmark_gelgenie.py`):**
+- True bands are the connected components of the hand masks.
+- The lane count is derived from the true bands (as a user would type it).
+- The mask goes through the same orientation autogel applies.
+- Reported per gel: found / merged / missed / spurious, recall, precision, and the share of true
+  bands inside a placed lane.
+
+**First run, version 0.2.0:**
+- Found 79 % (ladder gels) / 68 % (lab JPEG gels) / 75 % (other labs).
+- Precision 79 / 22 / 26 %.
+
+**Causes found:**
+1. **Orientation.** The "signal centre of mass" rule turned many upright gels upside down, and
+   the gradient-energy rule turned some by 90°; the long straight tray and gel edges dominate it.
+   New rules:
+   - lane direction = area-weighted vote of band-like blobs (wider than tall); lines longer than
+     ¼ of the image are ignored
+   - upside down only if a periodic well row is clearly stronger at the bottom
+     (`row_periodicity`, shared with the gel-row splitter)
+   - otherwise the image is left as it is
+
+   Result: 89 of 95 gels kept upright; the simulated rotated gel is still corrected.
+2. **Comb spacing bound.** The spacing search had a minimum of W/(n+1)/1.8, which assumes the
+   lanes fill the image. On real photos the gel often fills only part of the frame.
+   - Removing the bound let narrow combs win inside the bright half of a gel (0_Thermo: 30 px
+     instead of 56).
+   - A span-based search window broke Test_1/Test_2 (the tray edges widened the span).
+   - **Final solution:** a local normalisation of the lane profile (sliding maximum, floored at
+     20 % of the global maximum), times a **coverage** factor. The comb must span the signal
+     region, measured as the 10th–90th percentile of the profile mass.
+3. **Spurious detections:** spread over between bands (1526), below the lowest band (1084),
+   above the top band (1019) and outside the band area (631). They are weak: median peak ~1/4 of
+   true bands.
+   - A gel-wide floor (`min_gel_rel`, 3 % of the gel's 95th-percentile band) raised precision
+     to 47 % (lab) / 31 % (external) for about 1 % recall.
+   - But on Test_1/2 it removed faint ladder bands (the weakest ladder band is 0.8 % of the 95th
+     percentile next to saturated samples).
+   - A median-based reference gave almost no gain.
+   - **Decision:** the option stays (Expert, "min. height vs. gel"), **default off**.
+
+**Final, default settings:**
+
+| Subset | True bands | Found (incl. merged) | Strict | Precision | True bands inside a lane |
+|---|---|---|---|---|---|
+| ladder gels (35) | 5420 | 0.886 | 0.874 | 0.802 | 0.933 |
+| lab gels, JPEG (37) | 625 | 0.810 | 0.749 | 0.285 | 0.902 |
+| other labs (23) | 1297 | 0.798 | 0.753 | 0.239 | 0.924 |
+
+**How to read these numbers:**
+- Precision is a lower bound: the annotators did not outline every faint band or smear.
+- The lane count was derived from annotated bands, so for gels with many empty lanes it can
+  differ from the real number of wells.
+- Gels lying side by side (two gels next to each other) are not modelled yet; several external
+  images are like that.
+
+**Checked:** ruff clean; `pytest` 91 passed, including the real-gel tests with
+`AUTOGEL_TEST_GELS` set; the gallery unchanged; Test_1/2: 20 lanes, 19/19 ladder bands.
+
 ### 0.2.0 – 2026-11-18 – logging, GUI test coverage, gel gallery, stacked gels, batch, installer
 User requests:
 - every GUI option must be tested

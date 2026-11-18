@@ -92,8 +92,69 @@ def _periodicity(profile: np.ndarray) -> float:
     return float(ac[lo:hi].max())
 
 
+def row_periodicity(img: np.ndarray) -> np.ndarray:
+    """Per row: how periodic the horizontal edges are along x (autocorrelation peak, 0..1).
+
+    A row of wells (one slot per lane) scores ~0.9; band rows, gel edges and noise score lower.
+    Rows with almost no edge energy get 0."""
+    sm = ndimage.gaussian_filter(img.astype(np.float32), 1.5)
+    gy = np.abs(ndimage.sobel(sm, 0))
+    gy = np.minimum(gy, np.percentile(gy, 99.5))
+    h, w = gy.shape
+    lo_lag, hi_lag = max(3, w // 60), max(4, w // 4)
+    score = np.zeros(h)
+    energy = np.zeros(h)
+    from scipy import signal as sig
+    for y in range(3, h - 3):
+        strip = gy[y - 2:y + 3].mean(0)
+        q = strip - ndimage.uniform_filter1d(strip, max(5, w // 10))
+        q = q - q.mean()
+        ac = np.correlate(q, q, "full")[w - 1:]
+        energy[y] = float(strip.mean())
+        if ac[0] <= 0:
+            continue
+        ac = ac / ac[0]
+        pk, _ = sig.find_peaks(ac[lo_lag:hi_lag])
+        if len(pk):
+            score[y] = float(ac[lo_lag:hi_lag][pk].max())
+    if (energy > 0).any():
+        score[energy < 0.25 * np.median(energy[energy > 0])] = 0
+    return ndimage.gaussian_filter1d(score, 1)
+
+
+def lanes_vertical_vote(small: np.ndarray) -> float | None:
+    """Fraction of band-like blobs that are wider than tall (lanes vertical) - None if too few.
+
+    Bands are short blobs elongated across the lane. Long straight lines (tray and gel edges,
+    wells as a whole) are ignored, they fooled the earlier gradient-energy rule on real photos."""
+    from skimage import measure
+    th = ndimage.white_tophat(small, size=21)
+    thr = th.mean() + 3 * th.std()
+    lab = measure.label(th > thr)
+    h, w = small.shape
+    horiz = vert = 0.0
+    for r in measure.regionprops(lab):
+        if r.area < 8 or r.area > 0.01 * h * w:
+            continue
+        y0, x0, y1, x1 = r.bbox
+        bw, bh = x1 - x0, y1 - y0
+        if max(bw, bh) > 0.25 * min(h, w):          # long line: frame / tray / gel edge
+            continue
+        ratio = bw / max(bh, 1)
+        if ratio >= 1.6:
+            horiz += r.area
+        elif ratio <= 1 / 1.6:
+            vert += r.area
+    if horiz + vert < 50:
+        return None
+    return horiz / (horiz + vert)
+
+
 def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
-    """Return dict(invert, rot90_k, flip_lr, angle) to bring lanes vertical, wells on top."""
+    """Return dict(invert, rot90_k, flip_lr, angle) to bring lanes vertical, wells on top.
+
+    Conservative: most gel photos are saved upright, so the image is only turned when the
+    evidence is clear (bands elongated the other way; a well row clearly at the bottom)."""
     a = img.astype(float)
     small = _block_mean(a, max(1, min(a.shape) // 400))
     if invert is None:
@@ -102,28 +163,29 @@ def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
         invert = (med - lo) > (hi - med)
     if invert:
         small = small.max() - small
-    # Bands, wells and tray edges all run ACROSS the lanes, so intensity changes
-    # mostly along the run direction: compare gradient energy along both axes
-    from scipy import ndimage as ndi
-    th = ndi.white_tophat(small, size=15)
+    vote = lanes_vertical_vote(small)
+    th = ndimage.white_tophat(small, size=15)
     th = np.minimum(th, np.percentile(th, 99.9))
-    gy = ndi.sobel(th, 0)
-    gx = ndi.sobel(th, 1)
-    ey, ex = float((gy ** 2).sum()), float((gx ** 2).sum())
-    px, py = ey, ex   # kept for the log
-    k = 0 if ey >= ex else 1
+    ey = float((ndimage.sobel(th, 0) ** 2).sum())
+    ex = float((ndimage.sobel(th, 1) ** 2).sum())
+    if vote is not None and abs(vote - 0.5) > 0.15:
+        k = 0 if vote > 0.5 else 1
+    else:                                   # no clear band shape: fall back to edge energy
+        k = 0 if ey >= ex else 1
     s = np.rot90(small, k)
-    # wells on top: signal centre of mass along the run direction lies nearer the wells
-    from scipy import ndimage as ndi
-    th = ndi.white_tophat(s, size=15)
-    rows = np.minimum(th, np.percentile(th, 99.9)).sum(1)
-    com = (rows * np.arange(len(rows))).sum() / max(rows.sum(), 1e-9)
-    if com > len(rows) / 2:
+    # upside down only if a row of wells is clearly at the bottom and not at the top
+    rp = row_periodicity(s)
+    n = len(rp)
+    top, bottom = rp[: int(n * 0.35)].max(initial=0), rp[int(n * 0.65):].max(initial=0)
+    flipped = bottom > 0.6 and bottom > top + 0.15
+    if flipped:
         k += 2
     s = np.rot90(small, k)
     angle = estimate_skew(s)
     return {"invert": bool(invert), "rot90_k": int(k % 4), "flip_lr": False,
-            "angle": float(angle), "grad_energy_run": px, "grad_energy_cross": py}
+            "angle": float(angle), "band_shape_vote": None if vote is None else round(float(vote), 3),
+            "well_score_top": round(float(top), 3),
+            "well_score_bottom": round(float(bottom), 3)}
 
 
 def estimate_skew(small: np.ndarray, max_deg: float = 3.0, step: float = 0.25) -> float:

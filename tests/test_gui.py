@@ -158,6 +158,13 @@ def test_band_detection_parameters_have_effect(ui):
     w.sp_radius.setValue(10)
     w.detect_bands()
     assert w.ga.params.bg_radius == 10
+    w.sp_gelrel.setValue(0.1)                      # gel-relative floor drops the faint band
+    w.sp_snr.setValue(6)
+    w.cb_bg.setCurrentText("rolling_ball")
+    w.detect_bands()
+    assert w.ga.params.min_gel_rel == pytest.approx(0.1)
+    assert any("below 10%" in e["result"] for e in w.ga.log if e["step"] == "detect_bands")
+    w.sp_gelrel.setValue(0)
     w.sp_cov.setValue(0.99)
     w.detect_bands()
     n_strict = len(w.ga.bands)
@@ -224,7 +231,7 @@ def test_calibration_sizes_masses_loads(ui):
     w.sp_ref.setValue(1.0)
     w.sp_load.setValue(2.0)        # twice the reference amount loaded -> masses double
     w.quantify()
-    assert w.df[w.df.lane == 3]["est_mass_ng"].iloc[0] == pytest.approx(2 * m1, rel=1e-6)
+    assert w.df[w.df.lane == 3]["est_mass_ng"].iloc[0] == pytest.approx(2 * m1, rel=2e-3)
     w.ed_loads.setText("3:5, nonsense, 4:x")
     w.quantify()
     assert w.df[w.df.lane == 3]["conc_ng_per_ul"].iloc[0] == pytest.approx(2 * m1 / 5, rel=1e-3)

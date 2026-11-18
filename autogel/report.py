@@ -168,6 +168,7 @@ def write_report_md(ga, df, path: str, files: list[str] | None = None):
                      if p.tier_rows and (p.n_tiers or 1) > 1 else "")],
         ["Background", f"{p.bg_method}, radius {p.bg_radius:.0f} px"],
         ["Band detection", f"min S/N {p.min_snr}, min rel. height {p.min_rel_height}, "
+                           f"min height vs. gel {p.min_gel_rel}, "
                            f"min lane coverage {p.min_coverage}, smoothing σ {p.smooth_sigma} px"],
         ["Integration width", f"{p.lane_width_frac:.0%} of lane width"],
         ["Marker", f"{p.marker_preset or '–'} in lane(s) {marker}"],

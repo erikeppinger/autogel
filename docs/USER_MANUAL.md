@@ -130,6 +130,11 @@ The **autogel** panel on the right guides you from top to bottom.
   - *min. signal/noise*: raise it to ignore faint bands, lower it to pick up faint ones.
   - *min. lane coverage*: a real band spans the lane width, a dust speck doesn't. Lower it for
     smeared or tilted bands.
+  - *min. height vs. gel* (Expert, default off): ignores bands weaker than this fraction of the
+    gel's strong bands.
+    - About 0.03 removes most noise "bands" in empty lanes of noisy or JPEG images.
+    - Leave it off when faint ladder bands sit next to very bright samples, or they are removed
+      too.
 - **Re-detect bands in selected lane** re-runs detection for one lane, e.g. after you moved it.
 - To correct bands, select the **bands** layer:
   - Each rectangle is one band. Its **height is the integration range**.
@@ -325,7 +330,31 @@ Options of `run`:
 
 ---
 
-## 7. Troubleshooting
+## 7. How accurate is it?
+
+**Simulated gels with known content** (`tools/run_gallery.py`, 16 situations):
+- every band found, sizes within 0.3 %, relative amounts within 3 %
+- exceptions:
+  - overexposed bands are under-quantified (and flagged)
+  - a smiling gel needs a middle marker
+  - JPEG and scratched images give a few extra faint bands
+
+**95 real gels outlined by hand** (GelGenie dataset, three sources, `tools/benchmark_gelgenie.py`):
+
+| Gels | autogel finds | of its detections are outlined bands |
+|---|---|---|
+| ladder test gels | 89 % of the bands | 80 % |
+| routine lab gels (JPEG) | 81 % | 29 % |
+| gels from five other labs | 80 % | 24 % |
+
+The second column is a lower bound, because faint bands and smears were often not outlined.
+
+**In practice:**
+- Always look over the detected bands of a new gel type.
+- Delete spurious ones and add missed ones; both take a click, and the report records it.
+- For noisy JPEG gels, try *min. height vs. gel* = 0.03.
+
+## 8. Troubleshooting
 
 | Problem | Fix |
 |---|---|
