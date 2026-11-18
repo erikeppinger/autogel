@@ -71,12 +71,58 @@ def estimate_lanes(regions) -> int:
     return int(sum(max(1, round(x / sp)) for x in d) + 1)
 
 
-def evaluate(img: str, mask_path: str) -> dict:
+def estimate_layout(regions, width: int) -> tuple[int, int]:
+    """(lanes per gel, gels side by side) as a user would enter them: two gels next to each
+    other show up as a gap between band clusters far wider than the lane spacing."""
+    if not regions:
+        return 0, 1
+    xs = np.sort([r.centroid[1] for r in regions])
+    widths = np.median([r.bbox[3] - r.bbox[1] for r in regions])
+    clusters = [[xs[0]]]
+    for x in xs[1:]:
+        if x - np.mean(clusters[-1]) > 0.5 * widths:
+            clusters.append([x])
+        else:
+            clusters[-1].append(x)
+    c = np.array([np.mean(k) for k in clusters])
+    if len(c) >= 4:
+        d = np.diff(c)
+        sp = np.percentile(d, 25)
+        k = int(np.argmax(d))
+        mid = 0.5 * (c[k] + c[k + 1])
+        nl, nr = k + 1, len(c) - k - 1
+        balanced = min(nl, nr) >= 3 and min(nl, nr) / max(nl, nr) >= 0.6
+        if d[k] > 5.0 * sp and balanced and 0.15 * width < mid < 0.85 * width:
+            left = [r for r in regions if r.centroid[1] < mid]
+            right = [r for r in regions if r.centroid[1] >= mid]
+            return max(estimate_lanes(left), estimate_lanes(right)), 2
+    return estimate_lanes(regions), 1
+
+
+def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     mask_raw, _, _ = load_raw(mask_path)
     regions0 = components(np.asarray(mask_raw))
-    n_lanes = estimate_lanes(regions0)
     t = time.time()
-    ga = GelAnalysis(img, Params(n_lanes=n_lanes or None))
+    # the user describes the gel as autogel shows it, i.e. after orientation
+    probe = GelAnalysis(img, Params())
+    o0 = dict(probe.gel.orientation)
+    # Orientation check against the hand masks: true bands are wider than tall when the lanes
+    # run vertically. If autogel's 90-degree decision is wrong, record it and continue with the
+    # corrected orientation - the user would click "Rotate 90" once.
+    raw_regions = components(np.asarray(mask_raw))
+    wide = sum(r.area for r in raw_regions if (r.bbox[3] - r.bbox[1]) > (r.bbox[2] - r.bbox[0]))
+    tall = sum(r.area for r in raw_regions if (r.bbox[2] - r.bbox[0]) > (r.bbox[3] - r.bbox[1]))
+    need_k_odd = tall > wide            # lanes horizontal in the original image
+    orientation_error = (o0.get("rot90_k", 0) % 2 == 1) != need_k_odd
+    if orientation_error:
+        o0 = {**o0, "rot90_k": (o0.get("rot90_k", 0) + 1) % 4, "angle": 0.0}
+    m0 = apply_orientation((np.asarray(mask_raw) > 0).astype(np.float32), {**o0, "invert": False}, order=0) > 0.5
+    regions0 = components(m0)
+    if layout:
+        n_lanes, n_cols = estimate_layout(regions0, m0.shape[1])
+    else:
+        n_lanes, n_cols = estimate_lanes(regions0), 1
+    ga = GelAnalysis(img, Params(n_lanes=n_lanes or None, n_columns=n_cols), orientation=o0)
     ga.detect_lanes()
     ga.detect_bands()
     secs = time.time() - t
@@ -106,7 +152,9 @@ def evaluate(img: str, mask_path: str) -> dict:
     missed = sum(1 for o_ in owner if o_ < 0)
     spurious = len(boxes) - len(used)
     in_lane = sum(1 for (y, x) in gt if any(l.x0 - 3 <= x <= l.x1 + 3 for l in ga.lanes))
-    return {"true_bands": len(gt), "lanes_estimated": n_lanes, "lanes_found": len(ga.lanes),
+    return {"true_bands": len(gt), "orientation_error": bool(orientation_error),
+            "lanes_estimated": n_lanes, "gels_side_by_side": n_cols,
+            "lanes_found": len(ga.lanes),
             "detected": len(boxes), "found": found, "merged": merged, "missed": missed,
             "spurious": spurious,
             "recall": round((found + merged) / len(gt), 3) if gt else None,
@@ -167,12 +215,13 @@ def main(data: str, out: str, subsets: list[str]):
     ok = df[df.get("error").isna()] if "error" in df else df
     with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
         f.write("# autogel on hand-labelled real gels (GelGenie dataset)\n\n")
-        f.write("| Subset | Images | Errors | True bands | Recall (incl. merged) | Strict recall | Precision "
-                "| Bands inside a lane | s / image |\n|---|---|---|---|---|---|---|---|---|\n")
+        f.write("| Subset | Images | Errors | 90° orientation wrong | True bands | Recall (incl. merged) "
+                "| Strict recall | Precision | Bands inside a lane | s / image |\n"
+                "|---|---|---|---|---|---|---|---|---|---|\n")
         for sub, g in df.groupby("subset"):
             gg = ok[ok.subset == sub]
             tb = gg.true_bands.sum()
-            f.write(f"| {sub} | {len(g)} | {len(g) - len(gg)} | {int(tb)} "
+            f.write(f"| {sub} | {len(g)} | {len(g) - len(gg)} | {int(gg.orientation_error.sum())} | {int(tb)} "
                     f"| {(gg.found.sum() + gg.merged.sum()) / tb:.3f} | {gg.found.sum() / tb:.3f} "
                     f"| {gg.found.sum() / max(1, gg.detected.sum()):.3f} "
                     f"| {(gg.bands_in_a_lane * gg.true_bands).sum() / tb:.3f} | {gg.seconds.mean():.1f} |\n")

@@ -89,6 +89,44 @@ replayable log.
 
 ## 6. Change log
 
+### 0.3.0 – 2026-11-18 – gels side by side
+User request: support two gels lying side by side in one image (seen in the external benchmark
+gels).
+
+- **Model:** `Params.n_columns` / `column_splits` and `Lane.column`. Every gel region (gel row ×
+  column) gets its own lane comb and well row.
+- **Naming:** gels are named A, B, C … in reading order; `gel_column` was added to the band table.
+- **Size calibration** uses only markers of the same gel (`tier`, `column`).
+- **Automatic split:** the widest low-signal stripe of the band-feature profile within 15–85 %
+  of the width. Tray dividers and gel edges are long vertical lines, already removed by the
+  vertical top-hat, so they don't count as signal.
+- **GUI:** a "gels side by side" setting. The split layer is renamed *gel splits*; horizontal
+  lines are gel rows and vertical lines are columns, and both can be dragged.
+- **Gallery:** new scenario `agarose_side_by_side` (two 10-lane gels with a bright divider):
+  20/20 lanes, 4 × 13/13 ladder bands, 27/27 sample bands, size error ≤ 0.3 %. The split landed
+  exactly in the divider gap.
+- **Benchmark changes:**
+  - The user's layout (lanes per gel, gels side by side) is now estimated in the *oriented*
+    frame. Side by side is only assumed for a gap of at least 5 × the lane spacing with
+    balanced band clusters (≥ 3 lanes and ≥ 60 % balance per side); the first rule, gap
+    > 3 × spacing, also flagged single gels with empty lanes.
+  - Orientation errors are now counted separately: if autogel's 90° decision contradicts the
+    hand masks, it is recorded and the benchmark continues with the corrected orientation, as a
+    user would click Rotate 90°. **4 of 95 gels** had wrong 90° orientation, mostly gels with
+    long smeared lanes whose streaks look like bands.
+- **Result (default settings, orientation corrected where needed):**
+
+| Subset | 90° wrong | True bands | Found (incl. merged) | Strict | Precision | Inside a lane |
+|---|---|---|---|---|---|---|
+| ladder gels | 1 | 5421 | 0.868 | 0.860 | 0.798 | 0.915 |
+| lab gels (JPEG) | 0 | 625 | 0.810 | 0.749 | 0.272 | 0.902 |
+| other labs | 3 | 1297 | 0.831 | 0.784 | 0.327 | 0.938 |
+
+- On the 4 genuine side-by-side gels that autogel oriented correctly, recall stays at 97–100 %
+  and precision improves (e.g. 0.22 → 0.36, 0.09 → 0.18).
+- **Checked:** ruff clean; `pytest` 93 passed (incl. real gels, the new GUI split test and the
+  gallery).
+
 ### 0.2.1 – 2026-11-18 – benchmark on 95 hand-labelled real gels
 **Data:** GelGenie dataset (Zenodo 10.5281/zenodo.14641949).
 - Downloaded with the user's OK: `quantitation_ladder_gels` (35), `nathan_gels` (37, JPEG) and
@@ -148,8 +186,7 @@ replayable log.
 - Precision is a lower bound: the annotators did not outline every faint band or smear.
 - The lane count was derived from annotated bands, so for gels with many empty lanes it can
   differ from the real number of wells.
-- Gels lying side by side (two gels next to each other) are not modelled yet; several external
-  images are like that.
+- Side-by-side gels are now supported (0.3.0).
 
 **Checked:** ruff clean; `pytest` 91 passed, including the real-gel tests with
 `AUTOGEL_TEST_GELS` set; the gallery unchanged; Test_1/2: 20 lanes, 19/19 ladder bands.

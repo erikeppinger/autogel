@@ -7,7 +7,7 @@ interactive **napari** editor for corrections. Built on numpy/scipy, no GPU need
 - Background correction (rolling ball / lane edges), dust rejection, saturation flags
 - Sizes from one or two marker lanes; ng estimates from ladder band masses
 - Edit lanes and bands directly on the image; every step is logged and replayable
-- Stacked gels (two combs), batch processing of many gels with the same settings
+- Several gels per image (side by side and/or stacked), batch processing with the same settings
 - Export: CSV / XLSX tables, lane profiles (CSV + PDF), annotated image, lab-book report
   (Markdown), JSON Lines log, session file
 

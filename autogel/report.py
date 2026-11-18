@@ -60,6 +60,8 @@ def describe(e: dict) -> str:
         load = f", ladder loaded {p['load']} µg" if p.get("load") else ""
         return (f"Marker: {p.get('preset')} in lane(s) {', '.join(map(str, p.get('lanes', [])))}"
                 f" ({len(p.get('sizes') or [])} bands{load})")
+    if s == "set_columns":
+        return f"Gels side by side: {r}" + (f" ({p['reason']})" if p.get("reason") else "")
     if s == "set_tiers":
         return f"Gel rows: {r}" + (f" ({p['reason']})" if p.get("reason") else "")
     if s == "set_size_range":
@@ -163,7 +165,7 @@ def write_report_md(ga, df, path: str, files: list[str] | None = None):
     marker = ", ".join(map(str, p.marker_lanes)) or "–"
     L.append(_md_table([
         ["Lanes", f"{len(ga.lanes)} (requested: {p.n_lanes or 'auto'} per gel row), "
-                  f"gel rows: {p.n_tiers or 1}"
+                  f"gel rows: {p.n_tiers or 1}, gels side by side: {p.n_columns or 1}"
                   + (f" split at row(s) {', '.join(f'{r:.0f}' for r in p.tier_rows)}"
                      if p.tier_rows and (p.n_tiers or 1) > 1 else "")],
         ["Background", f"{p.bg_method}, radius {p.bg_radius:.0f} px"],

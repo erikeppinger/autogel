@@ -19,6 +19,7 @@ EXPECT = {
     "agarose_smiling": (12, 0, 5),             # limitation: 2 edge markers cannot model a smile
     "agarose_smiling_3_markers": (4, 0, 5),    # ...a middle marker fixes most of it
     "agarose_two_combs": (1, 0, 5),            # two stacked gels, split found automatically
+    "agarose_side_by_side": (1, 0, 5),         # two gels next to each other, split found automatically
     "agarose_dirty": (1, 4, 5),                # scratches crossing lanes can look like bands
     "agarose_smears_empty": (1, 0, 5),
     "agarose_overexposed": (2, 0, 25),         # clipped bands under-quantified (flagged saturated)

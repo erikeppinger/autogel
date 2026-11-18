@@ -109,18 +109,22 @@ The **autogel** panel on the right guides you from top to bottom.
 
    Changes apply about half a second after you stop editing.
 4. Optional: enter **names** separated by commas (e.g. `M, ctrl, s1, s2, …`).
-5. **Two gels in one picture** (a big gel with two combs, or two gels side by side on the tray
-   one above the other):
-   - Set **gel rows (combs)** to 2. Use 3 or 4 for more combs.
-   - autogel finds the second row of wells and draws the split as a green line (layer
-     *gel rows*). If the line is wrong, drag it to just above the lower wells; lanes and bands
-     are then detected again.
-   - **number of lanes** means lanes *per gel row*.
-   - Lanes are named A1…An for the upper gel and B1…Bn for the lower one, but numbered on
-     through both (lane n+1 = B1). Give marker lanes by number, e.g. `1, 20, 21, 40` for markers
-     at both edges of both gels.
-   - Sizes are calibrated **only from markers in the same gel row**, so each gel row needs at
-     least one marker.
+5. **Several gels in one picture**: stacked (a big gel with two combs) and/or **side by side**
+   on the tray.
+   - **Gels side by side:** set **gels side by side** to 2 (up to 4). The split is placed in the
+     widest empty stripe between the gels; tray dividers don't count. Drag the green vertical
+     line in the layer *gel splits* if it's wrong.
+   - **Stacked gels:
+** set **gel rows (combs)** to 2 (up to 4). autogel finds the
+     second row of wells and draws the split as a green horizontal line (layer *gel splits*). If
+     it's wrong, drag it to just above the lower wells.
+   - After you move a split line, lanes and bands are detected again.
+   - **number of lanes** means lanes *per gel*.
+   - Gels are named A, B, C, … in reading order (left to right, then top to bottom), and their
+     lanes A1…An, B1…Bn, numbered on through all gels (lane n+1 = B1). Give marker lanes by
+     number, e.g. `1, 20, 21, 40` for markers at both edges of two 20-lane gels.
+   - Sizes are calibrated **only from markers of the same gel**, so every gel needs at least one
+     marker. The band table has the columns `gel_row` and `gel_column`.
 
 ### 3.3 Bands
 - **Detect bands (all lanes)**: finds band peaks in every lane's background-corrected profile.
@@ -343,11 +347,14 @@ Options of `run`:
 
 | Gels | autogel finds | of its detections are outlined bands |
 |---|---|---|
-| ladder test gels | 89 % of the bands | 80 % |
-| routine lab gels (JPEG) | 81 % | 29 % |
-| gels from five other labs | 80 % | 24 % |
+| ladder test gels | 87 % of the bands | 80 % |
+| routine lab gels (JPEG) | 81 % | 27 % |
+| gels from five other labs (incl. 5 images with gels side by side) | 83 % | 33 % |
 
-The second column is a lower bound, because faint bands and smears were often not outlined.
+- The 90° orientation was wrong on 4 of 95 images, mostly gels with heavily smeared lanes. Check
+  that the lanes run top to bottom and click **Rotate 90°** if not; the numbers above assume
+  that correction.
+- The last column is a lower bound, because faint bands and smears were often not outlined.
 
 **In practice:**
 - Always look over the detected bands of a new gel type.
@@ -365,6 +372,7 @@ The second column is a lower bound, because faint bands and smears were often no
 | Two bands merged | Draw two rectangles with the right limits instead of one |
 | Sizes wrong | Check that the marker band count matches the ladder (warning under *Calibrate*) |
 | Mass R² low | Normal for the smallest and largest fragments, which stain less per ng and are more diffuse. Use only bands within the ladder's mass range, and don't quantify saturated bands |
-| Two gels in one image, lanes look wrong | Set **gel rows (combs)** to 2 and check the green split line |
+| Two gels in one image, lanes look wrong | Set **gels side by side** or **gel rows (combs)** to 2 and check the green split line |
+| Lanes run across the screen / bands look like vertical streaks | **Rotate 90°**: heavily smeared samples can fool the automatic orientation |
 | Many gels to do | Use **Batch** (section 4) with one finished gel as the template |
 | GUI does not start on an old PC | Use the command line, or update the graphics driver (napari needs OpenGL 2.1) |

@@ -27,6 +27,8 @@ class Params:
     n_lanes: int | None = None          # None = auto (per gel row)
     n_tiers: int = 1                    # gel rows = combs stacked in one image
     tier_rows: list[float] | None = None  # split rows between gel rows (None = automatic)
+    n_columns: int = 1                  # gels side by side in one image
+    column_splits: list[float] | None = None  # split columns between them (None = automatic)
     lane_width_frac: float = 0.8        # integration width as fraction of lane width
     bg_method: str = "rolling_ball"     # rolling_ball | lane_edges | none
     bg_radius: float | None = None      # px; None = image height / 40
@@ -64,6 +66,7 @@ class Lane:
     name: str = ""
     source: str = "auto"
     tier: int = 0                       # gel row (0 = top comb)
+    column: int = 0                     # gel side by side (0 = left)
 
     @property
     def x0(self):
@@ -121,41 +124,90 @@ class GelAnalysis:
 
     # ------------------------------------------------------------------ lanes
     def detect_lanes(self) -> list[Lane]:
-        """Find lanes. With several gel rows (stacked gels / two combs) every row is handled
-        separately: its own wells, lane comb and lane names (A1.., B1..)."""
+        """Find lanes. Several gels in one image - side by side (columns) and/or stacked
+        (gel rows, i.e. two combs) - are handled separately: each gel gets its own wells, lane
+        comb and lane names (A1.., B1.. in reading order: left to right, top to bottom)."""
         a = self.data
         H, W = a.shape
         # Band-like features only: a vertical top-hat keeps short horizontal
         # structures (bands, wells) and removes long vertical ones (tray edges,
         # smears, illumination gradients).
         bandimg = self._band_feature_image()
+        columns = self.column_bounds(bandimg)
         tiers = self.tier_bounds()
+        n_gels = len(columns) * len(tiers)
         lanes: list[Lane] = []
         info = []
         for t, (ra, rb) in enumerate(tiers):
-            h = rb - ra
-            prof = bandimg[ra + int(h * .02): rb - int(h * .02)].mean(0)
-            # baseline window must be wider than any lane (wide lanes were split in two otherwise)
-            prof = prof - ndimage.minimum_filter1d(ndimage.gaussian_filter1d(prof, 2), max(5, W // 4))
-            comb = prof / (prof.max() + 1e-12)
-            peaks, spacing = self._fit_lane_grid(comb, self.params.n_lanes)
-            width = 0.8 * spacing
-            well = ra + self._find_well(a[ra:rb], peaks, width)
-            y0 = max(float(ra), well - 10)
-            y1 = float(rb - 1 - (int(H * .005) if t == len(tiers) - 1 else 2))
-            prefix = chr(65 + t) if len(tiers) > 1 else ""
-            lanes += [Lane(x=float(p), width=float(width), y0=y0, y1=y1, name=f"{prefix}{i + 1}", tier=t)
-                      for i, p in enumerate(peaks)]
-            info.append(f"{prefix + ': ' if prefix else ''}{len(peaks)} lanes, width {width:.0f} px, "
-                        f"spacing {spacing:.1f} px, well row {well:.0f}")
+            for col, (ca, cb) in enumerate(columns):
+                h, w = rb - ra, cb - ca
+                prof = bandimg[ra + int(h * .02): rb - int(h * .02), ca:cb].mean(0)
+                # baseline window must be wider than any lane (wide lanes were split in two otherwise)
+                prof = prof - ndimage.minimum_filter1d(ndimage.gaussian_filter1d(prof, 2), max(5, w // 4))
+                comb = prof / (prof.max() + 1e-12)
+                peaks, spacing = self._fit_lane_grid(comb, self.params.n_lanes)
+                width = 0.8 * spacing
+                well = ra + self._find_well(a[ra:rb, ca:cb], peaks, width)
+                y0 = max(float(ra), well - 10)
+                y1 = float(rb - 1 - (int(H * .005) if t == len(tiers) - 1 else 2))
+                prefix = chr(65 + t * len(columns) + col) if n_gels > 1 else ""
+                lanes += [Lane(x=float(ca + p), width=float(width), y0=y0, y1=y1, name=f"{prefix}{i + 1}",
+                               tier=t, column=col) for i, p in enumerate(peaks)]
+                info.append(f"{prefix + ': ' if prefix else ''}{len(peaks)} lanes, width {width:.0f} px, "
+                            f"spacing {spacing:.1f} px, well row {well:.0f}")
         self.lanes = lanes
         self.well_y = lanes[0].y0 + 10 if lanes else 0.0
         self.bands = []
         self._profiles = {}
         self._log("detect_lanes", {"n_lanes_param": self.params.n_lanes, "n_tiers": len(tiers),
-                                   "tier_bounds": [[int(x), int(y)] for x, y in tiers]},
+                                   "tier_bounds": [[int(x), int(y)] for x, y in tiers],
+                                   "n_columns": len(columns),
+                                   "column_bounds": [[int(x), int(y)] for x, y in columns]},
                   "; ".join(info))
         return self.lanes
+
+    def column_bounds(self, bandimg: np.ndarray | None = None) -> list[tuple[int, int]]:
+        """Column ranges of gels lying side by side. Manual splits win; otherwise searched."""
+        W = self.data.shape[1]
+        n = max(1, int(self.params.n_columns or 1))
+        if n == 1:
+            return [(0, W)]
+        cols = sorted(self.params.column_splits or [])
+        if len(cols) != n - 1:
+            cols = self.find_column_splits(n, bandimg)
+            self.params.column_splits = cols
+        edges = [0] + [int(c) for c in cols] + [W]
+        return [(edges[i], edges[i + 1]) for i in range(n) if edges[i + 1] - edges[i] > 20]
+
+    def find_column_splits(self, n: int, bandimg: np.ndarray | None = None) -> list[float]:
+        """Split between gels side by side: the widest stripes without band signal in the middle
+        part of the image (tray dividers and gel edges are long vertical lines, already removed
+        by the band filter, so they do not count as signal)."""
+        b = self._band_feature_image() if bandimg is None else bandimg
+        W = b.shape[1]
+        prof = ndimage.gaussian_filter1d(b.mean(0), max(2.0, W / 200))
+        thr = 0.1 * float(np.percentile(prof, 95))
+        low = prof < thr
+        runs, start = [], None
+        for x in range(W + 1):
+            if x < W and low[x]:
+                start = x if start is None else start
+            elif start is not None:
+                if start > 0.15 * W and x < 0.85 * W:          # gaps at the image border don't count
+                    runs.append((x - start, (start + x - 1) / 2))
+                start = None
+        runs.sort(reverse=True)
+        cuts = sorted(c for _, c in runs[: n - 1])
+        if len(cuts) < n - 1:                                  # no clear gap: equal parts
+            cuts = [W * (k + 1) / n for k in range(n - 1)]
+        return [float(c) for c in cuts]
+
+    def set_column_splits(self, cols: list[float], reason: str = "user"):
+        self.params.column_splits = sorted(float(c) for c in cols)
+        self.params.n_columns = len(cols) + 1
+        self._log("set_columns", {"columns": self.params.column_splits, "reason": reason},
+                  f"{self.params.n_columns} gels side by side, split at column(s) "
+                  + ", ".join(f"{c:.0f}" for c in self.params.column_splits))
 
     def _find_well(self, a: np.ndarray, peaks, width) -> float:
         """Well row inside one gel row: every lane has a well, only some have bands -> median
@@ -753,9 +805,10 @@ class GelAnalysis:
                          "points": list(zip(xs, ys))}
 
     def _size_for(self, lane: int, y: float) -> tuple[float, bool]:
-        tier = self.lanes[lane].tier
-        # stacked gels: only markers of the same gel row describe this lane's migration
-        cals = [c for c in self.calibrations if len(c.ys) >= 2 and self.lanes[c.lane].tier == tier]
+        gel = (self.lanes[lane].tier, self.lanes[lane].column)
+        # several gels in one image: only markers of the same gel describe this lane's migration
+        cals = [c for c in self.calibrations if len(c.ys) >= 2
+                and (self.lanes[c.lane].tier, self.lanes[c.lane].column) == gel]
         if not cals:
             return np.nan, False
         x = self.lanes[lane].x
@@ -815,6 +868,7 @@ class GelAnalysis:
             r = {
                 "lane": b.lane + 1, "lane_name": self.lanes[b.lane].name,
                 "gel_row": self.lanes[b.lane].tier + 1,
+                "gel_column": self.lanes[b.lane].column + 1,
                 "is_marker": b.lane in marker_idx, "band": cnt[b.lane],
                 "y_px": round(b.y, 1), "y0_px": round(b.y0, 1), "y1_px": round(b.y1, 1),
                 "rf": round(rf(b), 4),

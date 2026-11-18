@@ -346,10 +346,10 @@ def test_two_gel_rows_and_split_line(ui):
     w.detect_lanes()
     assert len(w.ga.lanes) == 24 and {l.tier for l in w.ga.lanes} == {0, 1}
     assert w.ga.lanes[12].name == "B1"
-    lines = v.layers["gel rows"].data
+    lines = v.layers["gel splits"].data
     assert len(lines) == 1 and 880 < np.mean(lines[0][:, 0]) < 990
     # drag the split line down by 20 px -> lanes re-detected for the new rows
-    v.layers["gel rows"].data = [lines[0] + np.array([20, 0])]
+    v.layers["gel splits"].data = [lines[0] + np.array([20, 0])]
     pump()
     assert any(e["step"] == "set_tiers" and "moved" in str(e["params"]) for e in w.ga.log)
     assert len(w.ga.lanes) == 24
@@ -375,3 +375,29 @@ def test_batch_button(ui, tmp_path):
     s = bands[(bands.gel == "b0.tif") & (bands.lane == 5)]["size_bp"].iloc[0]
     assert s == pytest.approx(2500, rel=0.03)
     assert any("Batch finished" in m[1] for m in msgs)
+
+
+def test_gels_side_by_side_and_split_line(ui):
+    w, v, msgs, tmp = ui
+    from .gallery import SCENARIOS, render
+    sc = {s.name: s for s in SCENARIOS}["agarose_side_by_side"]
+    path, _ = render(sc, str(tmp))
+    w.open_image(path)
+    w.sp_cols.setValue(2)
+    w.sp_lanes.setValue(10)
+    w.detect_lanes()
+    assert len(w.ga.lanes) == 20 and {l.column for l in w.ga.lanes} == {0, 1}
+    assert [w.ga.lanes[0].name, w.ga.lanes[10].name] == ["A1", "B1"]
+    lines = v.layers["gel splits"].data
+    assert len(lines) == 1 and 880 < np.mean(lines[0][:, 1]) < 980
+    v.layers["gel splits"].data = [lines[0] + np.array([0, 10])]     # drag the split right
+    pump()
+    assert any(e["step"] == "set_columns" and "moved" in str(e["params"]) for e in w.ga.log)
+    assert len(w.ga.lanes) == 20
+    # markers of gel A must not calibrate gel B: give markers only in gel A
+    w.ed_marker_lanes.setText("1, 10")
+    w.cb_preset.setCurrentText("custom")
+    from .gallery import DNA_LADDER
+    w.ed_sizes.setText(", ".join(map(str, DNA_LADDER)))
+    w.quantify()
+    assert w.df[w.df.lane > 10]["size_bp"].isna().all()

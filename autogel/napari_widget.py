@@ -312,6 +312,12 @@ class AutogelWidget(QWidget):
                                  "is found automatically and can be dragged in the 'gel rows' layer.")
         self.sp_tiers.valueChanged.connect(self._tiers_changed)
         f.addRow("gel rows (combs)", self.sp_tiers)
+        self.sp_cols = QSpinBox()
+        self.sp_cols.setRange(1, 4)
+        self.sp_cols.setToolTip("Gels lying side by side in one image. The split is found automatically "
+                                "and can be dragged in the 'gel splits' layer.")
+        self.sp_cols.valueChanged.connect(self._cols_changed)
+        f.addRow("gels side by side", self.sp_cols)
         b = QPushButton("Detect lanes")
         b.clicked.connect(self.detect_lanes)
         f.addRow(b)
@@ -553,6 +559,7 @@ class AutogelWidget(QWidget):
         p.min_gel_rel = self.sp_gelrel.value()
         p.n_lanes = self.sp_lanes.value() or None
         p.n_tiers = self.sp_tiers.value()
+        p.n_columns = self.sp_cols.value()
         p.invert = self.chk_invert.isChecked()
         return p
 
@@ -595,6 +602,7 @@ class AutogelWidget(QWidget):
         p = self._params() if self.ga else Params(invert=None)
         p.n_lanes = self.sp_lanes.value() or None
         p.n_tiers = self.sp_tiers.value()
+        p.n_columns = self.sp_cols.value()
         if not self.ga:
             p.invert = None
         self.ga = None
@@ -618,7 +626,7 @@ class AutogelWidget(QWidget):
             self.chk_invert.setChecked(bool(ga.gel.orientation.get("invert")))
             self.chk_invert.blockSignals(False)
             self.sp_angle.setValue(ga.gel.orientation.get("angle", 0.0))
-            for name in ("gel", "saturated", "highlight", "gel rows", "lanes", "bands", "sizes left", "sizes right"):
+            for name in ("gel", "saturated", "highlight", "gel splits", "lanes", "bands", "sizes left", "sizes right"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
             a = ga.data
@@ -632,7 +640,7 @@ class AutogelWidget(QWidget):
             lanes = self.viewer.add_shapes(name="lanes", shape_type="rectangle",
                                            edge_color=self.colors["lane"],
                                            face_color="transparent", edge_width=2)
-            tiers = self.viewer.add_shapes(name="gel rows", shape_type="line", edge_color="#009E73",
+            tiers = self.viewer.add_shapes(name="gel splits", shape_type="line", edge_color="#009E73",
                                            edge_width=4)
             tiers.events.data.connect(lambda e: self._schedule("tiers"))
             bands = self.viewer.add_shapes(name="bands", shape_type="rectangle",
@@ -672,6 +680,9 @@ class AutogelWidget(QWidget):
         self.sp_tiers.blockSignals(True)
         self.sp_tiers.setValue(p.n_tiers or 1)
         self.sp_tiers.blockSignals(False)
+        self.sp_cols.blockSignals(True)
+        self.sp_cols.setValue(p.n_columns or 1)
+        self.sp_cols.blockSignals(False)
         self.cb_bg.setCurrentText(p.bg_method)
         self.sp_snr.setValue(p.min_snr)
         self.sp_cov.setValue(p.min_coverage)
@@ -764,6 +775,16 @@ class AutogelWidget(QWidget):
         if self.ga.lanes:
             self.detect_lanes()
 
+    def _cols_changed(self, n: int):
+        if self.ga is None:
+            return
+        self.ga.params.n_columns = n
+        self.ga.params.column_splits = None      # search the split(s) again
+        self.ga._log("set_columns", {"n_columns": n, "reason": "gels side by side setting"},
+                     f"{n} gel(s) side by side")
+        if self.ga.lanes:
+            self.detect_lanes()
+
     def _names_changed(self):
         if not self.ga or not self.ed_names.text().strip():
             return
@@ -834,14 +855,26 @@ class AutogelWidget(QWidget):
             if geom(lanes) != geom(self.ga.lanes):
                 self.ga.set_lanes(lanes, reason="edited in viewer")
                 lanes_changed = True
-        if "tiers" in pending and "gel rows" in self.viewer.layers:
-            rows = sorted(float(np.mean(np.asarray(ln)[:, 0])) for ln in self.viewer.layers["gel rows"].data)
-            if rows and [round(r) for r in rows] != [round(r) for r in (self.ga.params.tier_rows or [])]:
+        if "tiers" in pending and "gel splits" in self.viewer.layers:
+            rows, cols = [], []
+            for ln in self.viewer.layers["gel splits"].data:
+                ln = np.asarray(ln)
+                dy, dx = np.ptp(ln[:, 0]), np.ptp(ln[:, 1])
+                (rows if dx >= dy else cols).append(float(np.mean(ln[:, 0 if dx >= dy else 1])))
+            changed = False
+            p = self.ga.params
+            if rows and [round(r) for r in sorted(rows)] != [round(r) for r in (p.tier_rows or [])]:
                 self.ga.set_tier_rows(rows, reason="split line moved in viewer")
-                self.sp_tiers.blockSignals(True)
-                self.sp_tiers.setValue(len(rows) + 1)
-                self.sp_tiers.blockSignals(False)
-                with self._busy("Re-detecting lanes and bands for the new gel rows"):
+                changed = True
+            if cols and [round(c) for c in sorted(cols)] != [round(c) for c in (p.column_splits or [])]:
+                self.ga.set_column_splits(cols, reason="split line moved in viewer")
+                changed = True
+            if changed:
+                for sp, v in ((self.sp_tiers, p.n_tiers), (self.sp_cols, p.n_columns)):
+                    sp.blockSignals(True)
+                    sp.setValue(v)
+                    sp.blockSignals(False)
+                with self._busy("Re-detecting lanes and bands for the new gel layout"):
                     self.ga.detect_lanes()
                     self.ga.detect_bands()
                 lanes_changed = True
@@ -900,14 +933,16 @@ class AutogelWidget(QWidget):
                 h = float(np.median([l.y1 - l.y0 for l in ga.lanes]))
                 lanes.text = {"string": "{name}", "anchor": "center", "color": col["lane_text"],
                               "size": 8, "translation": [-(h / 2 + 25), 0]}
-            if "gel rows" in self.viewer.layers:
-                tl = self.viewer.layers["gel rows"]
+            if "gel splits" in self.viewer.layers:
+                tl = self.viewer.layers["gel splits"]
                 tl.data = []
-                W = ga.data.shape[1]
+                H, W = ga.data.shape
                 rows = ga.params.tier_rows if (ga.params.n_tiers or 1) > 1 else []
-                if rows:
-                    tl.add_lines([np.array([[r, 0], [r, W - 1]], float) for r in rows],
-                                 edge_color="#009E73", edge_width=4)
+                cols = ga.params.column_splits if (ga.params.n_columns or 1) > 1 else []
+                lines = [np.array([[r, 0], [r, W - 1]], float) for r in (rows or [])]
+                lines += [np.array([[0, c], [H - 1, c]], float) for c in (cols or [])]
+                if lines:
+                    tl.add_lines(lines, edge_color="#009E73", edge_width=4)
             bands = self.viewer.layers["bands"]
             bands.data = []
             if ga.bands:

@@ -48,6 +48,7 @@ class Scenario:
     rot90: int = 0
     seed: int = 1
     tiers: int = 1                         # gel rows (two combs = 2); H is per gel row
+    columns: int = 1                       # gels side by side; W is per gel
 
 
 SCENARIOS = [
@@ -61,6 +62,8 @@ SCENARIOS = [
              smile_px=35, marker_lanes=(0, 6, 11)),
     Scenario("agarose_two_combs", "two gels stacked in one image (two combs, own ladders)",
              tiers=2, H=900),
+    Scenario("agarose_side_by_side", "two gels side by side on the tray (own ladders), divider between",
+             columns=2, n_lanes=10, W=900, marker_lanes=(0, 9)),
     Scenario("agarose_dirty", "dust specks and scratches", dust=120, scratches=8),
     Scenario("agarose_smears_empty", "degraded-DNA smears and two empty lanes",
              smear_lanes=(3, 7), empty_lanes=(5, 9)),
@@ -142,11 +145,20 @@ def render(sc: Scenario, folder: str) -> tuple[str, dict]:
     """Render the scenario; with tiers > 1 several gels are stacked (lanes numbered on)."""
     rng = np.random.default_rng(sc.seed)
     truth, parts = {}, []
+    gap = 60                                   # tray divider between gels lying side by side
     for t in range(sc.tiers):
-        sub = dataclasses.replace(sc, seed=sc.seed + t)
-        tr = truth_lanes(sub)
-        parts.append(_signal(sub, tr))
-        truth.update({t * sc.n_lanes + k: v for k, v in tr.items()})
+        row = []
+        for c in range(sc.columns):
+            g = t * sc.columns + c
+            sub = dataclasses.replace(sc, seed=sc.seed + g)
+            tr = truth_lanes(sub)
+            if c:
+                div = np.zeros((sc.H, gap), np.float32)
+                div[:, gap // 2 - 3: gap // 2 + 3] = 4000.0   # bright vertical tray edge
+                row.append(div)
+            row.append(_signal(sub, tr))
+            truth.update({g * sc.n_lanes + k: v for k, v in tr.items()})
+        parts.append(np.hstack(row))
     signal = np.vstack(parts)
     H, W = signal.shape
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -198,7 +210,8 @@ def _orientation_effect(sc: Scenario, o: dict) -> tuple[bool, bool]:
     """Apply render's transform and then the tool's to a coordinate grid: are lanes mirrored
     (left/right) or is the gel upside down relative to the upright rendered gel?"""
     from autogel.imageio import apply_orientation
-    yy, xx = np.mgrid[0:sc.H * sc.tiers, 0:sc.W]
+    Wt = sc.W * sc.columns + 60 * (sc.columns - 1)
+    yy, xx = np.mgrid[0:sc.H * sc.tiers, 0:Wt]
     grids = []
     for g in (yy, xx):
         t = np.rot90(g, sc.rot90 * 3 if sc.rot90 else 0)
@@ -206,7 +219,7 @@ def _orientation_effect(sc: Scenario, o: dict) -> tuple[bool, bool]:
             t = t[::-1]
         grids.append(apply_orientation(t.astype(np.float32), {**o, "angle": 0.0}, order=0))
     gy, gx = grids
-    if gy.shape != (sc.H * sc.tiers, sc.W):
+    if gy.shape != (sc.H * sc.tiers, Wt):
         return False, True
     mirrored = gx[0, 0] > gx[0, -1]
     upside = gy[0, 0] > gy[-1, 0]
@@ -216,12 +229,13 @@ def _orientation_effect(sc: Scenario, o: dict) -> tuple[bool, bool]:
 def evaluate(sc: Scenario, folder: str, export: bool = False) -> dict:
     from autogel.analysis import GelAnalysis, Params
     path, truth = render(sc, folder)
-    ga = GelAnalysis(path, Params(n_lanes=sc.n_lanes, n_tiers=sc.tiers))
+    ga = GelAnalysis(path, Params(n_lanes=sc.n_lanes, n_tiers=sc.tiers, n_columns=sc.columns))
     ga.detect_lanes()
     ga.detect_bands()
     lad = PROT_LADDER if sc.unit == "kDa" else DNA_LADDER
-    markers = [t * sc.n_lanes + m for t in range(sc.tiers) for m in sc.marker_lanes]
-    n_total = sc.n_lanes * sc.tiers
+    n_gels = sc.tiers * sc.columns
+    markers = [g * sc.n_lanes + m for g in range(n_gels) for m in sc.marker_lanes]
+    n_total = sc.n_lanes * n_gels
     ga.set_marker([m + 1 for m in markers], sizes=lad, masses=[50.0] * len(lad), unit=sc.unit)
     df = ga.quantify()
     col = f"size_{sc.unit}"
