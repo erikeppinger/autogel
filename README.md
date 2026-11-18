@@ -21,7 +21,7 @@ interactive **napari** editor for corrections. Built on numpy/scipy, no GPU need
 2. Right-click the ZIP → **Extract All…** → **Extract**. (Don't start the installer from inside
    the ZIP without extracting; it needs the whole folder.)
 3. Open the extracted folder `autogel-main` (Windows shows it one level deeper:
-   `autogel-mainutogel-main`) and double-click **`install_windows.bat`**. If Windows asks
+   `autogel-main\autogel-main`) and double-click **`install_windows.bat`**. If Windows asks
    whether to run it, click **Run** (or **More info → Run anyway**).
 4. Wait a few minutes (about 300 MB download). Then start autogel from the new desktop icon
    *autogel*.
