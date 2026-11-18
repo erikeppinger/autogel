@@ -15,16 +15,27 @@ hundred MB of RAM.
 ## 1. Installation (once)
 
 ### Windows – double-click installer (recommended)
-1. Download autogel: on the GitHub page, click **Code → Download ZIP**, then unzip the folder
-   anywhere, e.g. in *Documents*. If you got the folder from a colleague or a network drive,
-   just copy it.
-2. Double-click **`install_windows.bat`** inside the folder.
+1. **Download** autogel:
+   - direct link: <https://github.com/erikeppinger/autogel/archive/refs/heads/main.zip>, or
+   - on the project page <https://github.com/erikeppinger/autogel>, click the green
+     **<> Code** button, then **Download ZIP** at the bottom of the menu.
+
+   The file `autogel-main.zip` (about 150 KB) lands in your *Downloads* folder. If you got the
+   folder from a colleague or a network drive, just copy it and skip step 2.
+2. **Unzip:** right-click `autogel-main.zip` → **Extract All…** → **Extract**. A folder
+   `autogel-main` opens; inside it is a second folder `autogel-main` with the program files.
+   You can move it anywhere, e.g. to *Documents*.
+   - Don't double-click the installer while you are still *inside* the ZIP: Windows then
+     copies out only that one file, the installer can't find the rest and stops with an error.
+3. Open the inner `autogel-main` folder (the one that contains `install_windows.bat`,
+   `README.md` and the folder `autogel`) and double-click **`install_windows.bat`**.
+   - Windows may warn about a downloaded file: click **Run**, or **More info → Run anyway**.
    - If Python 3.10 or newer is missing, the installer offers to install Python 3.12 with
      Windows' own package manager (*winget*). Alternatively, install it from python.org and
      tick *Add python.exe to PATH*.
    - It then downloads autogel's components (about 300 MB, a few minutes) into
      `%LOCALAPPDATA%\autogel`. No administrator rights are needed.
-3. Start autogel from the **autogel** icon on the desktop or in the Start menu.
+4. Start autogel from the **autogel** icon on the desktop or in the Start menu.
 
 | | |
 |---|---|
