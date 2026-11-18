@@ -65,7 +65,8 @@ def plan_labels(ga, df, lanes: set[int]) -> list[Label]:
         prio = vols.get(key, 0.0)
         if is_marker and any(abs(s - r) / r < 0.02 for r in ref):
             prio += 1e18        # reference bands (e.g. 3 kb, 1 kb, 0.5 kb) always win
-        out.append(Label(band=k, lane=b.lane, y=b.y, x=(l.x0 - pad) if left else (l.x1 + pad),
+        o = l.dx(b.y)                       # curved lanes: label beside the lane at this row
+        out.append(Label(band=k, lane=b.lane, y=b.y, x=(l.x0 + o - pad) if left else (l.x1 + o + pad),
                          side="left" if left else "right", text=fmt_size(s, unit),
                          marker=is_marker, priority=prio))
     return out

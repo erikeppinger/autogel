@@ -261,19 +261,82 @@ def test_calibration_sizes_masses_loads(ui):
     assert "conc_ng_per_ul" in w.df and np.isnan(w.df[w.df.lane == 4]["conc_ng_per_ul"]).all()
 
 
-def test_save_own_ladder(ui, monkeypatch):
+def test_ladder_manager_dialog(ui, monkeypatch, tmp_path):
     w, v, msgs, tmp = ui
-    w.cb_preset.setCurrentText("custom")
-    w.ed_sizes.setText("3000, 1000, 500")
-    w.ed_masses.setText("30, 20, 10")
-    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("lab ladder", True))
-    monkeypatch.setattr(QInputDialog, "getItem", lambda *a, **k: ("bp", True))
-    w._save_ladder()
-    items = [w.cb_preset.itemText(i) for i in range(w.cb_preset.count())]
-    assert "lab ladder" in items and w.cb_preset.currentText() == "lab ladder"
-    assert os.path.exists(tmp / "home" / "ladders.json")
     from autogel import markers
-    markers.PRESETS.pop("lab ladder", None)
+    from autogel.ladder_dialog import LadderDialog
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    d = LadderDialog(w, select=markers.DEFAULT_PRESET)
+    assert d.ed_name.text() == markers.DEFAULT_PRESET and "built-in" in d.lbl_origin.text()
+    # editing a built-in ladder saves a copy, never the original
+    d.ed_note.setText("our lot")
+    d._save()
+    assert markers.DEFAULT_PRESET + " (my copy)" in markers.PRESETS
+    assert markers.PRESETS[markers.DEFAULT_PRESET]["verified"]
+    # new ladder; sizes in any order, masses stay with them
+    d._new()
+    d.ed_name.setText("lab ladder")
+    d.ed_sizes.setText("500 3000 1000")
+    d.ed_masses.setText("10, 30, 20")
+    d.sp_ref.setValue(0.06)
+    assert d._save() and markers.PRESETS["lab ladder"]["masses"] == [30, 20, 10]
+    assert markers.PRESETS["lab ladder"]["reference_load"]["amount"] == pytest.approx(0.06)
+    d.ed_sizes.setText("1000, abc")
+    assert not d._save() and "Not saved" in d.lbl_msg.text()
+    # export, delete, import back
+    out = tmp_path / "lab.json"
+    d._show("lab ladder")
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), ""))
+    d._export()
+    assert out.exists()
+    d._delete()
+    assert "lab ladder" not in markers.PRESETS
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (str(out), ""))
+    d._import()
+    assert "lab ladder" in markers.PRESETS and "1 added" in d.lbl_msg.text()
+    d._delete()                                     # deleting a built-in is refused
+    d._show(markers.DEFAULT_PRESET)
+    d._delete()
+    assert markers.DEFAULT_PRESET in markers.PRESETS and "own ladders" in d.lbl_msg.text()
+    # sharing opens a pre-filled issue (no network access here: the URL is captured)
+    opened = []
+    from qtpy.QtGui import QDesktopServices
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda u: opened.append(u.toString()))
+    d.ed_source.setText("")
+    d._share()
+    assert not opened and "datasheet" in d.lbl_msg.text()
+    d.ed_source.setText("https://example.org/ds")
+    d._share()
+    assert opened and "issues/new" in opened[0] and "template=ladder.yml" in opened[0]
+    # update failure keeps the old library
+    monkeypatch.setattr(markers, "update_library", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+    d._update()
+    assert "old library kept" in d.lbl_msg.text() and markers.DEFAULT_PRESET in markers.PRESETS
+    # "use" with unsaved edits saves them and selects the ladder in the panel
+    d._new()
+    d.ed_name.setText("quick")
+    d.ed_sizes.setText("2000, 1000, 500")
+    d._use()
+    assert d.chosen == "quick"
+    w._refresh_presets(d.chosen)
+    assert w.cb_preset.currentText() == "quick" and w.ed_sizes.text() == "2000, 1000, 500"
+    for n in ("quick", "lab ladder", markers.DEFAULT_PRESET + " (my copy)"):
+        markers.delete_user_ladder(n)
+
+
+def test_suggest_ladder_button(ui, monkeypatch):
+    w, v, msgs, _ = ui
+    ready(w)
+    w.ed_marker_lanes.setText("1")
+    seen = {}
+
+    def pick(parent, title, label, items, *a, **k):
+        seen["items"] = items
+        return items[0], True
+    monkeypatch.setattr(QInputDialog, "getItem", pick)
+    w._suggest_ladder()
+    assert seen["items"] and any(e["step"] == "suggest_ladder" for e in w.ga.log)
+    assert w.cb_preset.currentText() in [i.split("   (")[0] for i in seen["items"]]
 
 
 def test_bad_marker_input_reports_instead_of_crashing(ui):
@@ -424,3 +487,66 @@ def test_gels_side_by_side_and_split_line(ui):
     w.ed_sizes.setText(", ".join(map(str, DNA_LADDER)))
     w.quantify()
     assert w.df[w.df.lane > 10]["size_bp"].isna().all()
+
+
+def test_curved_lanes_drawn_and_editable(ui):
+    w, v, msgs, tmp = ui
+    from .gallery import SCENARIOS, render
+    path, _ = render({s.name: s for s in SCENARIOS}["agarose_curved_lanes"], str(tmp))
+    w.open_image(path)
+    w.chk_curved.setChecked(True)
+    w.sp_lanes.setValue(12)
+    w.detect_lanes()
+    w.detect_bands()
+    layer = v.layers["lanes"]
+    kinds = list(layer.shape_type)
+    assert "polygon" in kinds and kinds.count("polygon") == sum(bool(l.bend) for l in w.ga.lanes)
+    n_log = len(w.ga.log)
+    layer.data = list(layer.data)            # data event without a real change
+    pump()
+    assert not any(e["step"] == "set_lanes" for e in w.ga.log[n_log:])
+    # bands sit on the bent lane
+    k = max(range(len(w.ga.lanes)), key=lambda i: abs(w.ga.lanes[i].dx(w.ga.lanes[i].y1)))
+    lane = w.ga.lanes[k]
+    b = max((b for b in w.ga.bands if b.lane == k), key=lambda b: b.y)
+    box = [np.asarray(s) for s in v.layers["bands"].data][w.ga.bands.index(b)]
+    assert abs(box[:, 1].mean() - lane.x_at(b.y)) < 1.5
+    # drag the curved lane 6 px right: still curved, same name, edit logged
+    data = [np.asarray(s, float) for s in layer.data]
+    data[k] = data[k] + np.array([0, 6])
+    layer.data = data
+    pump()
+    new = w.ga.lanes[k]
+    assert any(e["step"] == "set_lanes" for e in w.ga.log[n_log:])
+    assert new.bend and new.name == lane.name
+    assert new.x_at(new.y1) == pytest.approx(lane.x_at(lane.y1) + 6, abs=1.0)
+
+
+def test_new_band_and_mass_options_reach_the_analysis(ui, tmp_path, monkeypatch):
+    w, v, msgs, _ = ui
+    w.btn_expert.setChecked(True)
+    for chk in (w.chk_floor, w.chk_deconv, w.chk_shoulder, w.chk_curved):
+        assert chk.isVisibleTo(w)
+    w.chk_floor.setChecked(False)
+    w.chk_shoulder.setChecked(True)
+    w.chk_curved.setChecked(False)          # default off; checked elsewhere
+    ready(w)
+    p = w.ga.params
+    assert (p.noise_floor, p.split_shoulders, p.curved_lanes) == (False, True, False)
+    w.chk_deconv.setChecked(False)
+    w.cb_mass.setCurrentText("one slope through origin")
+    w.quantify()
+    assert p.deconvolve is False and p.mass_model == "linear"
+    assert w.ga.mass_fit["model"] == "linear" and "through origin" in w.lbl_cal.text()
+    w.cb_mass.setCurrentText("size-dependent")
+    w.quantify()
+    assert w.ga.mass_fit["model"] in ("size", "linear") and "typical error" in w.lbl_cal.text()
+    # a saved session restores the switches
+    s = tmp_path / "s.json"
+    w.ga.save_session(str(s))
+    w.chk_shoulder.setChecked(False)
+    w.chk_floor.setChecked(True)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (str(s), ""))
+    w._open_session_dialog()
+    assert w.chk_shoulder.isChecked() and not w.chk_floor.isChecked() and not w.chk_curved.isChecked()
+    assert w.cb_mass.currentText() == "size-dependent"

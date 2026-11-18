@@ -364,3 +364,117 @@ def test_skew_reestimated_after_manual_rotation(tmp_path):
     g = load_gel(path, orientation={**auto, "rot90_k": (auto["rot90_k"] + 2) % 4, "angle": None})
     assert isinstance(g.orientation["angle"], float) and abs(g.orientation["angle"]) <= 3.0
     assert not any("uncertain" in w for w in g.warnings)
+
+
+def test_size_dependent_mass_curve(tmp_path):
+    """Signal per ng falls for small fragments (as on the real gels: ~20 % at 100 bp). The size
+    model learns that from the ladder; a single slope over-/under-estimates by several fold."""
+    def resp(size):                       # relative signal per ng, peak at ~2 kb
+        return np.exp(-0.5 * ((np.log10(size) - 3.3) / 0.55) ** 2)
+    masses = [10.0, 20, 15, 30, 10, 25, 40, 10, 20, 15, 30]
+    lad = [(y_for_size(s), 3000 * m / 10 * resp(s), 4) for s, m in zip(SIZES, masses)]
+    true = {2: (250, 20.0), 3: (2500, 20.0), 4: (6000, 8.0)}            # lane: (size, ng)
+    lanes = {0: lad, 9: lad}
+    for k, (size, m) in true.items():
+        lanes[k] = [(y_for_size(size), 3000 * m / 10 * resp(size), 4)]
+    ga = run(make_gel(str(tmp_path / "g.tif"), lanes=lanes, noise=20), n_lanes=10)
+    ga.set_marker([1, 10], sizes=SIZES, masses=masses)
+    df = ga.quantify()
+    assert ga.mass_fit["model"] == "size" and ga.mass_fit["typical_error"] < 0.15
+    for k, (size, m) in true.items():
+        row = df[df.lane == k + 1].iloc[0]
+        assert row["mass_size_corrected"]
+        assert row["est_mass_ng"] == pytest.approx(m, rel=0.15), (size, row["est_mass_ng"])
+    ga.params.mass_model = "linear"
+    lin = ga.quantify()
+    assert ga.mass_fit["model"] == "linear" and not lin["mass_size_corrected"].any()
+    small = lin[lin.lane == 3].iloc[0]["est_mass_ng"]
+    assert small < 0.5 * 20.0                                           # one slope: far too low at 250 bp
+
+
+def _doublet_gel(tmp_path, sep, ratio, name="d.tif"):
+    lanes = {k: [(500, 6000, 4.0), (500 + sep, 6000 / ratio, 4.0)] for k in range(1, 9)}
+    lanes[5] = [(500, 6000, 6.0)]                         # a broad single band must stay one band
+    return make_gel(str(tmp_path / name), lanes=lanes, noise=30)
+
+
+def _ratios(df, lanes=(2, 3, 4, 5, 7, 8, 9)):
+    out = []
+    for k in lanes:
+        sub = df[df.lane == k].sort_values("y_px")
+        if len(sub) == 2:
+            out.append(sub.volume.iloc[0] / sub.volume.iloc[1])
+    return out
+
+
+def test_touching_bands_split_by_peak_fit(tmp_path):
+    """Resolved doublet 4:1 - the valley split gives the faint band the strong one's tail."""
+    p = _doublet_gel(tmp_path, 14, 4)
+    res = {}
+    for dec in (False, True):
+        ga = run(p, n_lanes=10, deconvolve=dec)
+        df = ga.quantify()
+        res[dec] = _ratios(df)
+        assert len(res[dec]) == 7 and df["deconvolved"].any() == dec
+    assert np.mean(res[True]) == pytest.approx(4.0, rel=0.03)
+    assert abs(np.mean(res[False]) - 4) > 2 * abs(np.mean(res[True]) - 4)
+
+
+@pytest.mark.parametrize("sep, ratio", [(10, 3), (9, 1.5), (14, 4)])
+def test_split_shoulders(tmp_path, sep, ratio):
+    p = _doublet_gel(tmp_path, sep, ratio)
+    assert _ratios(run(p, n_lanes=10).quantify()) == [] or sep >= 14     # unresolved without the option
+    ga = run(p, n_lanes=10, split_shoulders=True)
+    df = ga.quantify()
+    r = _ratios(df)
+    assert len(r) == 7 and np.mean(r) == pytest.approx(ratio, rel=0.05)
+    assert len(df[df.lane == 6]) == 1                                    # broad single band not split
+
+
+def test_split_shoulders_skips_saturated(tmp_path):
+    lanes = {k: [(500, 60000, 6.0)] for k in range(1, 9)}               # clipped flat tops
+    ga = run(make_gel(str(tmp_path / "s.tif"), lanes=lanes, clip=30000), n_lanes=10, split_shoulders=True)
+    assert all(sum(b.lane == k for b in ga.bands) == 1 for k in range(1, 9))
+
+
+def test_noise_floor_keeps_faint_ladder_and_drops_noise(tmp_path):
+    """Empty lanes of a noisy image produce noise 'bands'; the floor removes them, while a faint
+    band far above the noise (but < 1 % of the bright samples) stays."""
+    lad, _ = ladder(sizes=SIZES, amp=8000)
+    lanes = {0: lad, 1: [(600, 60000 / 8, 5)], 2: [(600, 400, 4)]}         # faint but clean band in lane 3
+    p = make_gel(str(tmp_path / "n.tif"), lanes=lanes, noise=60)
+    on = run(p, n_lanes=10, noise_floor=True, min_snr=3)       # low SNR threshold: noise gets through
+    off = run(p, n_lanes=10, noise_floor=False, min_snr=3)
+    assert sum(b.lane == 2 for b in on.bands) == 1
+    assert sum(b.lane == 0 for b in on.bands) == len(SIZES)
+    assert sum(b.lane >= 3 for b in off.bands) >= 1 and sum(b.lane >= 3 for b in on.bands) == 0
+    assert "noise floor" in on.log[-1]["result"]
+
+
+def test_curved_lanes_traced_straight_lanes_left_alone(tmp_path):
+    from .gallery import SCENARIOS, render
+    by = {s.name: s for s in SCENARIOS}
+    for name in ("agarose_clean", "agarose_low_signal", "agarose_uneven_light", "agarose_dirty"):
+        p, _ = render(by[name], str(tmp_path))       # noise, vignetting, dust must not look curved
+        ga = GelAnalysis(p, Params(n_lanes=12, curved_lanes=True))
+        ga.detect_lanes()
+        assert not any(l.bend for l in ga.lanes), name
+    p, _ = render(by["agarose_curved_lanes"], str(tmp_path))
+    ga = GelAnalysis(p, Params(n_lanes=12, curved_lanes=True))
+    ga.detect_lanes()
+    bent = [l for l in ga.lanes if l.bend]
+    assert len(bent) >= 6
+    right, left = ga.lanes[-1], ga.lanes[0]               # edge lanes drift ~25 px outward in the simulation
+    assert right.bend and 12 < right.dx(right.y1) - right.dx(right.y0 + 60) < 40
+    assert left.bend and -40 < left.dx(left.y1) - left.dx(left.y0 + 60) < -12
+    # the profile follows the lane: a session round trip keeps the bend
+    ga.detect_bands()
+    s = tmp_path / "s.json"
+    ga.save_session(str(s))
+    gb = GelAnalysis.load_session(str(s))
+    assert gb.lanes[-1].bend == ga.lanes[-1].bend
+    assert np.allclose(gb.lane_profile(11)["corr"], ga.lane_profile(11)["corr"])
+    # default (off): straight lanes
+    gc = GelAnalysis(p, Params(n_lanes=12))
+    gc.detect_lanes()
+    assert not any(l.bend for l in gc.lanes)

@@ -59,6 +59,12 @@ replayable log.
 | D15 | Working image as **float32**, sums in float64 | Exact for 16-bit data, half the RAM of float64 |
 | D16 | Okabe-Ito palette as default; band size labels only on marker lanes and the selected lane | Colour-blind users; labels overlapped with 20 lanes (user feedback) |
 | D17 | Lane direction (90°) = **weighted sum of four cues**: band shape, periodic well row near the top/bottom, lane-comb periodicity across the gel, edge energy (tie-break). Warn when the sum is near 0 | Band shape alone (which replaced D3's gradient energy in 0.2.1) turned 4 of 95 real gels with heavily smeared lanes by 90°. The well row and the lane comb run across the lanes, so smears don't fool them. Weights checked on the 95 gels both as they are and turned 90° |
+| D18 | Ladder library = curated file in the repo + optional downloaded update + ApE + user file; contributions via a GitHub issue form, checked by a maintainer, validated by CI | Users wanted to add ladders and get others' without reinstalling. Scraping vendor pages at run time would be fragile; a reviewed file keeps the data trustworthy |
+| D19 | Ladder suggestion from band positions **and** brightness pattern; ladders without a pattern get a neutral brightness score | Positions alone can't tell apart many ladders; without the neutral score, ladders lacking data won |
+| D20 | Mass curve: signal per ng as a function of fragment size (from the ladder) | Signal per ng drops 5× from 2 kb to 100 bp on real gels; one slope gave ~90 % typical error, the size curve 19 % |
+| D21 | Noise floor = weak relative to the gel **and** near the gel noise | Either criterion alone either removed faint ladder bands (relative) or too little (noise) |
+| D22 | Touching bands split by Gaussian areas (on); shoulder splitting optional (off) | Area split fixes biased ratios without changing band counts; shoulder splitting changes counts and misfires on lopsided real bands |
+| D23 | Curved lanes estimated per gel (shift + stretch vs. depth), opt-in | Per-lane tracing followed noise and gradients; the gel-wide model is robust on simulations but found a false drift on the lab's straight Test gels |
 
 ## 4. Test material
 
@@ -69,12 +75,14 @@ replayable log.
 | `tests/synth.py` | synthetic gels with known positions and intensities (rotation, inversion, dust, clipping, empty lanes) |
 
 ## 5. Known limitations / open points
-- The ladder mass curve on Test_1 has R² ≈ 0.67. The smallest fragments (100–300 bp) give less
-  signal per ng than the datasheet masses predict, and the bright reference bands lie above the
-  line. A non-linear (power) mass curve or excluding the extreme bands could be offered.
-- Lanes are straight rectangles. Strongly curved lanes need manual adjustment; there is no
-  curved-lane model yet.
-- Overlapping bands are split at the valley between them, with no Gaussian deconvolution yet.
+- ng estimates: typical error ~19 % on the Test gels (size-dependent curve, 0.4.0). Part of
+  that is the load difference between the two ladder lanes; a per-lane load correction isn't
+  modelled.
+- Curved-lane tracing (0.4.0) is opt-in: it can find a false drift on straight gels whose
+  lower part holds only the ladder lanes. Individual wiggly lanes aren't modelled (only a
+  gel-wide fan-out); their outline can be edited by hand.
+- Unresolved doublets (shoulders) are only split with the opt-in option, which occasionally
+  splits a lopsided single band.
 - JPEG / 8-bit images and scratched gels can produce a few spurious faint bands. Use the
   original TIFF, and delete such bands in the viewer.
 - The 90° decision is still wrong on 1 of 95 real gels (CB 2022-04-07, a near-tie); the
@@ -85,12 +93,147 @@ replayable log.
 - Ladders not yet verified: GeneRuler 100 bp Plus / 100 bp (sizes and masses) and Bio-Rad
   Precision Plus (sizes). The NEB P7719 protein standard is missing; its band table wasn't
   readable on the product page.
-- The ApE ladders have only sizes and relative brightness. They could be used to match ladder
-  bands automatically by brightness pattern; that isn't done yet.
+- Ladder suggestion can't tell apart ladders that differ only by a scale factor; the user
+  picks from the top 3.
 
 ---
 
 ## 6. Change log
+
+### 0.4.0 – 2026-11-18 – ladder library sharing, ladder recognition, mass curve, noise floor, overlapping and curved lanes
+User request: items 1, 2, 3, 4 and 7 of the open-points list, plus a way for users to add ladders
+to the library ("a mask for git") that ships with a release or can be updated from the tool.
+
+**Ladder library (D18)**
+- **Ladder manager** (*Ladders…*, both modes) replaces the single "save as my ladder" button
+  (Expert-only before, name and unit only, no delete, no reference load):
+  - new / edit / delete
+  - a built-in ladder is never changed: saving an edit creates "… (my copy)"
+  - import / export of `.json` files
+  - **Suggest for library** opens a pre-filled GitHub issue form (`.github/ISSUE_TEMPLATE/
+    ladder.yml`); nothing is sent without the user submitting it
+  - **Update library from GitHub** downloads `autogel/ladders.json` from the main branch into
+    `~/.autogel/ladders_update.json`
+- **Load order:** built-in → update → ApE → user.
+- **Validation:** every entry is validated on save, import and download (unit, sizes strictly
+  decreasing, as many masses as sizes, reference load). Invalid entries are skipped and never
+  crash the program; an invalid or oversized (> 5 MB) download is rejected and the old
+  library kept. Files are written atomically.
+- **CI:** a GitHub workflow runs `tests/test_ladders.py` whenever a ladder file changes, so a typo
+  can't reach users through *Update library*.
+- **CLI:** `autogel ladders --import/--replace/--export/--update`.
+
+**Ladder recognition (item 7, D19)**
+- `suggest_ladders` pairs every library ladder with the marker lane's bands (like
+  `assign_marker`, ±2 bands) and scores:
+  - the smoothness of log(size) vs. migration
+  - the band count
+  - the brightness pattern (datasheet masses or ApE relative intensities)
+- Ladders without a brightness pattern get a neutral score; before that, a 25 bp ladder without
+  data beat NEB 1 kb Plus on the Test gels.
+- **Simulated marker lanes** (156 cases, all distinct library ladders, one band missing in a third):
+  top-1 88 %, top-3 99 %, ~0.1 s.
+- **Test_1/Test_2:** NEB 1 kb Plus first in all 4 ladder lanes.
+- **Limit:** ladders that differ by a scale factor (100 bp vs. 1 kb steps) look alike by position.
+- **GUI:** *Suggest ladder* lists the 3 best.
+
+**Mass curve (item 1, D20)**
+- **Finding:** on Test_1/Test_2 the signal per ng depends strongly on fragment size, the same way
+  in both marker lanes of both gels: highest at 1.5–3 kb, ~20 % of that at 100 bp, ~60 % at
+  10 kb. One slope through the origin therefore mis-estimates small fragments 3–5×.
+- **New default (`mass_model = "size"`):** log10(volume/ng) is fitted as a polynomial in log
+  size (degree 1–3 by the number of distinct sizes) on the unsaturated ladder bands, and each
+  sample band is converted at its own size (clamped to the ladder range).
+- **Reported:** leave-one-out *typical error* (± factor for a ladder band left out of the fit).
+
+| Gel | one slope: typical error / R² | size-dependent: typical error / R² |
+|---|---|---|
+| Test_1 | 96 % / 0.67 | 19 % / 0.93 |
+| Test_2 | 83 % / 0.76 | 19 % / 0.95 |
+
+- Part of the remaining 19 % is a real load difference between the two ladder lanes (lane 20
+  ≈ 25 % brighter).
+- New columns: `mass_size_corrected`. The PDF shows signal per ng vs. size; the batch summary
+  shows `mass_typical_error`.
+
+**Noise floor (item 2, D21)**
+- **Data:** 10 707 bands detected on the 95 benchmark gels, labelled real/spurious by the hand
+  masks.
+  - Best single feature: height relative to the gel's 95th-percentile band (= *min. height vs.
+    gel*). But Test_1's weakest ladder band is 0.8 % of that.
+  - Height over the gel-wide noise doesn't depend on bright samples.
+- **Rule (default on):** drop a band only if it is < 7 % of the gel's strong bands **and**
+  < 10× the gel noise.
+  - Benchmark: −28 % of spurious bands for −1.0 % of real ones.
+  - The weakest Test ladder band sits at 16.7× noise: margin 1.7×.
+  - A stricter version (`< 4 %` and `< 15×`) removed 30 % but with only 11 % margin, so it
+    was rejected.
+
+**Overlapping bands (item 3, D22)**
+- **Touching bands (default on):** auto bands whose ranges touch are fitted with one Gaussian
+  each over the shared range. The shared signal is split by the fitted areas; the fit is
+  accepted at R² ≥ 0.9, otherwise the valley split is kept. User-drawn bands are never
+  touched.
+  - Simulated 4:1 doublet: valley split 4.63, peak fit 4.01.
+  - Column `deconvolved`.
+- **Shoulders / unresolved doublets (option, default off):** a band is split when its profile
+  has two curvature minima (> 6× the curvature noise) **and** two Gaussians fit much better
+  than one (RSS < 40 %), the parts are ≥ 1.2 σ apart, and the smaller part carries ≥ 20 % of the
+  larger. Saturated bands are skipped (a clipped flat top has two curvature minima).
+  - Simulated doublets 1.5:1 to 4:1 at 9–14 px: all found, ratios within 1 %; broad single
+    bands not split.
+  - On Test_1/2 real ladder bands are slightly lopsided: with a 10 % share, 2 ladder bands per
+    gel were split; at 20 %, 1 of 38 is still split on Test_2.
+  - Benchmark: strict recall +0.2 to +1.1 points, precision −2 to −4 points. Therefore off.
+
+**Curved lanes (item 4, D23)**
+- `Lane.bend` = [[y, dx], …] (centre offset vs. row). It is followed by:
+  - profiles (rows grouped by integer offset)
+  - coverage, lane-edge background and band re-attachment
+  - the viewer (lanes drawn as polygons, bands placed on the bend, polygon edits parsed back)
+  - the annotated PNG, size labels and the benchmark boxes
+- Old sessions without `bend` load as straight lanes.
+- **Tracing, three attempts:**
+  1. **Per-lane centroid per strip.** A window of ±0.65 spacing caught the neighbouring ladder
+     lane in strips without own bands, giving bends of up to 500 px. With tracking it still
+     followed the vignetting gradient and noise.
+  2. **Per-lane box matching after removing the slope.** Worse on noisy/dirty gels: random bends
+     of 20–60 px.
+  3. **Per gel, all lanes at once (kept).** Each of 8 strips is matched to the full-height column
+     profile with a shift and a stretch about the gel centre (fan-out / perspective), smoothed
+     quadratically over the strips, and accepted only if consistent and > 15 % of the lane
+     width.
+     - Simulated straight gels (clean, noisy, vignetted, dusty, JPEG, smiling, stacked, side by
+       side): no bends.
+     - Curved simulation: edge lanes ±23 px (true ~25).
+- **But:** on Test_1/Test_2, whose lanes are straight (checked on the image: the bottom ladder
+  bands stay centred in the straight boxes), it still found a false drift of up to 30 px. In
+  the lower strips only the two ladder lanes carry bands, and two peaks don't constrain a
+  stretch. **Decision: tracing is opt-in** (Expert, *follow curved lanes*).
+  - Gallery `agarose_curved_lanes`: ratio error 1.9 % straight, 0.7 % traced.
+
+**Skew estimate fixed (found via the benchmark)**
+- Since 0.3.1, *Rotate 90°* re-estimates the skew. On CB 2022-04-07 that produced a +1° skew,
+  which improved the profile score by only 3 %. The lane comb then locked onto half the
+  spacing (recall 0.92 → 0.07).
+- `estimate_skew` now applies an angle only if it sharpens the lane profile by ≥ 15 % over 0°;
+  a real 2.5° tilt improves it by 168 %.
+- Benchmark: 6 images better, none worse.
+
+**Benchmark (default settings, 95 gels):**
+
+| Subset | Found 0.3.1 → 0.4.0 | Strict | Precision 0.3.1 → 0.4.0 |
+|---|---|---|---|
+| ladder gels | 0.862 → 0.853 | 0.845 | 0.796 → 0.810 |
+| lab gels (JPEG) | 0.810 → 0.810 | 0.746 | 0.272 → **0.446** |
+| other labs | 0.830 → 0.827 | 0.785 | 0.327 → **0.377** |
+
+With *split shoulders*: strict 0.847 / 0.749 / 0.796, precision 0.766 / 0.427 / 0.354.
+
+- **Also:** the benchmark has `--set name=value` for detection settings.
+- **Checked:** ruff clean; `pytest` 136 passed, incl. real gels, the gallery (18 scenarios) and
+  the new GUI tests (ladder manager, suggest, all new switches incl. session restore, curved
+  lane editing).
 
 ### 0.3.1 – 2026-11-18 – lane direction for smeared gels
 User request: improve the 90° orientation for gels with heavily smeared lanes; make sure the user

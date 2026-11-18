@@ -21,6 +21,7 @@ EXPECT = {
     "agarose_two_combs": (1, 0, 5),            # two stacked gels, split found automatically
     "agarose_side_by_side": (1, 0, 5),         # two gels next to each other, split found automatically
     "agarose_dirty": (1, 4, 5),                # scratches crossing lanes can look like bands
+    "agarose_curved_lanes": (1, 0, 5),         # fanned-out lanes, followed by lane tracing
     "agarose_smears_empty": (1, 0, 5),
     "agarose_overexposed": (2, 0, 25),         # clipped bands under-quantified (flagged saturated)
     "agarose_jpeg_8bit": (1, 14, 5),           # JPEG/8-bit artefacts -> spurious faint bands

@@ -229,18 +229,27 @@ def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
             "vertical_cues": {c: round(float(v), 3) for c, v in cues.items()}}
 
 
+SKEW_MIN_GAIN = 0.15   # a tilt must sharpen the lane profile by >= 15 % over 0 degrees
+
+
 def estimate_skew(small: np.ndarray, max_deg: float = 3.0, step: float = 0.25) -> float:
-    """Angle (deg) that makes lanes most vertical (sharpest lane profile)."""
-    best, best_a = -np.inf, 0.0
+    """Angle (deg) that makes lanes most vertical (sharpest lane profile).
+
+    0 unless the best angle is clearly better than no rotation: on a real gel a +1 degree
+    'tilt' that sharpened the profile by only 3 % moved the lane comb onto the wrong spacing
+    (a real 2.5 degree tilt sharpens it by > 150 %)."""
     h = small.shape[0]
     crop = small[h // 10: h - h // 10]
+    scores = {}
     for ang in np.arange(-max_deg, max_deg + 1e-9, step):
         r = ndimage.rotate(crop, ang, reshape=False, order=1, mode="nearest")
         prof = r[r.shape[0] // 8: -r.shape[0] // 8 or None].mean(0)
-        score = np.var(np.diff(prof))
-        if score > best:
-            best, best_a = score, float(ang)
-    return best_a if abs(best_a) >= 0.3 else 0.0
+        scores[round(float(ang), 4)] = float(np.var(np.diff(prof)))
+    best_a = max(scores, key=scores.get)
+    base = scores.get(0.0, 0.0)
+    if abs(best_a) < 0.3 or scores[best_a] < (1 + SKEW_MIN_GAIN) * base:
+        return 0.0
+    return float(best_a)
 
 
 def apply_orientation(a: np.ndarray, o: dict, order: int = 1) -> np.ndarray:

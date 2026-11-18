@@ -44,7 +44,7 @@ from qtpy.QtWidgets import (
 from .analysis import GelAnalysis, Lane, Params
 from .export import export_all, plot_lane
 from .labels import declutter, plan_labels
-from .markers import DEFAULT_PRESET, PRESETS, RESOLUTION_GUIDE, parse_sizes, save_user_ladder
+from .markers import DEFAULT_PRESET, PRESETS, RESOLUTION_GUIDE, parse_sizes, suggest_ladders
 from .report import describe
 
 # Okabe & Ito (2008) colour-universal-design palette: distinguishable with
@@ -57,6 +57,7 @@ PALETTES = {
                 "saturated": "red", "lane_text": "yellow", "band_text": "lime", "label_text": "white"},
 }
 DEFAULT_PALETTE = "colour-blind safe (Okabe-Ito)"
+MASS_MODELS = {"size-dependent": "size", "one slope through origin": "linear"}
 
 
 # the profile dock can be collapsed to ~0 px height; matplotlib then warns on every redraw
@@ -65,6 +66,28 @@ warnings.filterwarnings("ignore", message="constrained_layout not applied")
 
 def _rect(y0, x0, y1, x1):
     return np.array([[y0, x0], [y0, x1], [y1, x1], [y1, x0]], float)
+
+
+def _lane_shape(l: Lane) -> np.ndarray:
+    """What is drawn for a lane: a rectangle, or a polygon following a curved lane."""
+    return l.outline() if l.bend else _rect(l.y0, l.x0, l.y1, l.x1)
+
+
+def _lane_from_polygon(v: np.ndarray) -> Lane | None:
+    """Inverse of Lane.outline(): left edge top->bottom, right edge bottom->top."""
+    v = np.asarray(v, float)
+    if len(v) < 4 or len(v) % 2:
+        return None
+    n = len(v) // 2
+    left, right = v[:n], v[n:][::-1]
+    ys = (left[:, 0] + right[:, 0]) / 2
+    cs = (left[:, 1] + right[:, 1]) / 2
+    width = float(np.median(right[:, 1] - left[:, 1]))
+    if width <= 0 or np.any(np.diff(ys) <= 0):
+        return None
+    x = float(cs[0])
+    return Lane(x=x, width=width, y0=float(ys[0]), y1=float(ys[-1]),
+                bend=[[float(y), float(c - x)] for y, c in zip(ys, cs)])
 
 
 def _bbox(shape):
@@ -321,6 +344,12 @@ class AutogelWidget(QWidget):
                                 "and can be dragged in the 'gel splits' layer.")
         self.sp_cols.valueChanged.connect(self._cols_changed)
         f.addRow("gels side by side", self.sp_cols)
+        self.chk_curved = QCheckBox("follow curved lanes")
+        self.chk_curved.setChecked(Params.curved_lanes)
+        self.chk_curved.setToolTip("Trace each lane down the gel and follow it when it clearly bends "
+                                   "(fanned-out lanes). Untick for strictly straight lanes.")
+        f.addRow(self.chk_curved)
+        self._expert_items.append((f, self.chk_curved))
         b = QPushButton("Detect lanes")
         b.clicked.connect(self.detect_lanes)
         f.addRow(b)
@@ -358,7 +387,25 @@ class AutogelWidget(QWidget):
                                   "About 0.03 removes noise 'bands' in empty lanes of noisy or JPEG images. "
                                   "Leave off if faint ladder bands sit next to very bright samples.")
         f.addRow("min. height vs. gel", self.sp_gelrel)
-        for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov, self.sp_gelrel):
+        self.chk_floor = QCheckBox("automatic noise floor")
+        self.chk_floor.setChecked(Params.noise_floor)
+        self.chk_floor.setToolTip("Drop bands that are both weak (< 7 % of the gel's strong bands) and close to "
+                                  "the gel's noise (< 10x). Keeps faint ladder bands, removes noise 'bands' in "
+                                  "empty lanes of JPEG/noisy images.")
+        f.addRow(self.chk_floor)
+        self.chk_deconv = QCheckBox("split touching bands by peak fit")
+        self.chk_deconv.setChecked(Params.deconvolve)
+        self.chk_deconv.setToolTip("Bands whose ranges touch share their signal by fitted Gaussian peak areas "
+                                   "instead of being cut at the valley (more accurate for a faint band next to "
+                                   "a strong one). Column 'deconvolved' in the table.")
+        f.addRow(self.chk_deconv)
+        self.chk_shoulder = QCheckBox("split shoulders (unresolved doublets)")
+        self.chk_shoulder.setChecked(Params.split_shoulders)
+        self.chk_shoulder.setToolTip("Split a band in two when it clearly has a shoulder. Off by default: "
+                                     "slightly lopsided real bands are occasionally split too - check the result.")
+        f.addRow(self.chk_shoulder)
+        for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov, self.sp_gelrel, self.chk_floor,
+                  self.chk_deconv, self.chk_shoulder):
             self._expert_items.append((f, w))
         b = QPushButton("Detect bands (all lanes)")
         b.clicked.connect(self.detect_bands)
@@ -393,11 +440,20 @@ class AutogelWidget(QWidget):
         self.ed_masses = QLineEdit()
         self.ed_masses.setPlaceholderText("optional: mass per band (datasheet)")
         f.addRow("masses", self.ed_masses)
-        b = QPushButton("Save sizes/masses as my ladder…")
-        b.clicked.connect(self._save_ladder)
-        f.addRow(b)
-        for w in (self.ed_sizes, self.ed_masses, b):
+        for w in (self.ed_sizes, self.ed_masses):
             self._expert_items.append((f, w))
+        lad = QWidget()
+        ll = QHBoxLayout(lad)
+        ll.setContentsMargins(0, 0, 0, 0)
+        b = QPushButton("Ladders…")
+        b.setToolTip("Add, edit, import/export or share ladders; update the library")
+        b.clicked.connect(self._open_ladders)
+        ll.addWidget(b)
+        b = QPushButton("Suggest ladder")
+        b.setToolTip("Which library ladder matches the bands of the marker lane?")
+        b.clicked.connect(self._suggest_ladder)
+        ll.addWidget(b)
+        f.addRow(lad)
         # valid size range (resolution range of the gel): automatic, by gel %, or custom
         self.cb_range = QComboBox()
         self.cb_range.addItems(["automatic (whole ladder)", *RESOLUTION_GUIDE, "custom"])
@@ -439,10 +495,17 @@ class AutogelWidget(QWidget):
         self.sp_ref.setSpecialValueText("from library")
         self.sp_ref.setToolTip("Ladder amount the datasheet masses refer to; filled from the ladder library")
         f.addRow("datasheet load", self.sp_ref)
+        self.cb_mass = QComboBox()
+        self.cb_mass.addItems(list(MASS_MODELS))
+        self.cb_mass.setToolTip("How band intensity is turned into ng. 'size-dependent' learns from the ladder "
+                                "that small (and very large) fragments give less signal per ng.")
+        self.cb_mass.currentTextChanged.connect(lambda _t: self.ga and self.ga.params.marker_lanes
+                                                and self.quantify(silent=True))
+        f.addRow("mass curve", self.cb_mass)
         self.ed_loads = QLineEdit()
         self.ed_loads.setPlaceholderText("sample µl per lane, e.g. 2:5, 3:5 (→ ng/µl)")
         f.addRow("sample loads", self.ed_loads)
-        for w in (self.sp_ref, self.ed_loads):
+        for w in (self.sp_ref, self.cb_mass, self.ed_loads):
             self._expert_items.append((f, w))
         b = QPushButton("Calibrate && quantify")
         b.clicked.connect(self.quantify)
@@ -560,9 +623,13 @@ class AutogelWidget(QWidget):
         p.min_snr = self.sp_snr.value()
         p.min_coverage = self.sp_cov.value()
         p.min_gel_rel = self.sp_gelrel.value()
+        p.noise_floor = self.chk_floor.isChecked()
+        p.deconvolve = self.chk_deconv.isChecked()
+        p.split_shoulders = self.chk_shoulder.isChecked()
         p.n_lanes = self.sp_lanes.value() or None
         p.n_tiers = self.sp_tiers.value()
         p.n_columns = self.sp_cols.value()
+        p.curved_lanes = self.chk_curved.isChecked()
         p.invert = self.chk_invert.isChecked()
         return p
 
@@ -686,10 +753,17 @@ class AutogelWidget(QWidget):
         self.sp_cols.blockSignals(True)
         self.sp_cols.setValue(p.n_columns or 1)
         self.sp_cols.blockSignals(False)
+        self.cb_mass.blockSignals(True)
+        self.cb_mass.setCurrentText({v: k for k, v in MASS_MODELS.items()}.get(p.mass_model, "size-dependent"))
+        self.cb_mass.blockSignals(False)
         self.cb_bg.setCurrentText(p.bg_method)
         self.sp_snr.setValue(p.min_snr)
         self.sp_cov.setValue(p.min_coverage)
         self.sp_gelrel.setValue(p.min_gel_rel)
+        self.chk_floor.setChecked(p.noise_floor)
+        self.chk_curved.setChecked(p.curved_lanes)
+        self.chk_deconv.setChecked(p.deconvolve)
+        self.chk_shoulder.setChecked(p.split_shoulders)
         if p.marker_preset in PRESETS:
             self.cb_preset.setCurrentText(p.marker_preset)
         if p.marker_sizes:
@@ -844,20 +918,29 @@ class AutogelWidget(QWidget):
         pending, self._pending = self._pending, set()
         lanes_changed = False
         if "lanes" in pending:
-            shapes = self.viewer.layers["lanes"].data
-            old = {(round(l.x), round(l.width), round(l.y0), round(l.y1)): l for l in self.ga.lanes}
-            lanes = []
-            for s in shapes:
-                y0, x0, y1, x1 = _bbox(s)
-                key = (round((x0 + x1) / 2), round(x1 - x0), round(y0), round(y1))
-                prev = old.get(key)
-                lanes.append(Lane(x=(x0 + x1) / 2, width=x1 - x0, y0=y0, y1=y1,
-                                  name=prev.name if prev else "",
-                                  source=prev.source if prev else "user"))
-            def geom(ls):
-                return sorted((round(l.x, 1), round(l.width, 1), round(l.y0), round(l.y1)) for l in ls)
+            layer = self.viewer.layers["lanes"]
+            drawn = [(_lane_shape(l), l) for l in self.ga.lanes]
+            lanes, unchanged = [], 0
+            for s, kind in zip(layer.data, layer.shape_type):
+                s = np.asarray(s, float)
+                same = next((l for d, l in drawn if d.shape == s.shape and np.allclose(d, s, atol=0.5)), None)
+                if same is not None:                 # untouched lane (incl. its bend)
+                    lanes.append(same)
+                    unchanged += 1
+                    continue
+                new = _lane_from_polygon(s) if kind == "polygon" else None
+                if new is None:
+                    y0, x0, y1, x1 = _bbox(s)
+                    new = Lane(x=(x0 + x1) / 2, width=x1 - x0, y0=y0, y1=y1)
+                # keep the name/source of the lane it replaces (same place at the top)
+                prev = min(self.ga.lanes, key=lambda l: abs(l.x - new.x), default=None)
+                if prev is not None and abs(prev.x - new.x) < prev.width / 2:
+                    new.name, new.source = prev.name, "user"
+                else:
+                    new.source = "user"
+                lanes.append(new)
             # napari can emit a data event without a real change: only real lane edits count
-            if geom(lanes) != geom(self.ga.lanes):
+            if unchanged != len(self.ga.lanes) or len(lanes) != len(self.ga.lanes):
                 self.ga.set_lanes(lanes, reason="edited in viewer")
                 lanes_changed = True
         if "tiers" in pending and "gel splits" in self.viewer.layers:
@@ -889,8 +972,8 @@ class AutogelWidget(QWidget):
             for s in self.viewer.layers["bands"].data:
                 y0, x0, y1, x1 = _bbox(s)
                 y1 -= 1  # rectangles are drawn to b.y1 + 1 (inclusive last row)
-                xc = (x0 + x1) / 2
-                hit = [i for i, l in enumerate(self.ga.lanes) if l.x0 <= xc <= l.x1]
+                xc, yc = (x0 + x1) / 2, (y0 + y1) / 2
+                hit = [i for i, l in enumerate(self.ga.lanes) if l.contains(xc, yc)]
                 if not hit:
                     orphan += 1
                     continue
@@ -930,9 +1013,10 @@ class AutogelWidget(QWidget):
             lanes = self.viewer.layers["lanes"]
             lanes.data = []
             if ga.lanes:
-                lanes.add_rectangles([_rect(l.y0, l.x0, l.y1, l.x1) for l in ga.lanes],
-                                     edge_color=[col["marker"] if i in marker else col["lane"]
-                                                 for i in range(len(ga.lanes))])
+                lanes.add([_lane_shape(l) for l in ga.lanes],
+                          shape_type=["polygon" if l.bend else "rectangle" for l in ga.lanes],
+                          edge_color=[col["marker"] if i in marker else col["lane"]
+                                      for i in range(len(ga.lanes))])
                 lanes.features = {"name": [l.name for l in ga.lanes]}
                 # lane names centred ABOVE the lanes so they never sit on band labels
                 h = float(np.median([l.y1 - l.y0 for l in ga.lanes]))
@@ -956,8 +1040,10 @@ class AutogelWidget(QWidget):
                 # light fill: short (faint) bands stay visible as a box when zoomed out,
                 # instead of their two edges merging into one line
                 face = [to_rgba(c, 0.18) for c in edge]
-                bands.add_rectangles([_rect(b.y0, ga.lanes[b.lane].x0, b.y1 + 1, ga.lanes[b.lane].x1)
-                                      for b in ga.bands], edge_color=edge, face_color=face)
+                def box(b):
+                    l, d = ga.lanes[b.lane], ga.lanes[b.lane].dx(b.y)
+                    return _rect(b.y0, l.x0 + d, b.y1 + 1, l.x1 + d)
+                bands.add_rectangles([box(b) for b in ga.bands], edge_color=edge, face_color=face)
         finally:
             self._updating = False
         self._update_band_labels()
@@ -1040,12 +1126,14 @@ class AutogelWidget(QWidget):
         shapes, widths = [], []
         if lane is not None and 0 <= lane < len(self.ga.lanes):
             l = self.ga.lanes[lane]
-            shapes.append(_rect(l.y0, l.x0 - 3, l.y1, l.x1 + 3))
+            o = l.outline()
+            shapes.append(_rect(l.y0, o[:, 1].min() - 3, l.y1, o[:, 1].max() + 3))
             widths.append(3)
         if band is not None and 0 <= band < len(self.ga.bands):
             b = self.ga.bands[band]
             l = self.ga.lanes[b.lane]
-            shapes.append(_rect(b.y0 - 3, l.x0 - 6, b.y1 + 4, l.x1 + 6))
+            d = l.dx(b.y)
+            shapes.append(_rect(b.y0 - 3, l.x0 + d - 6, b.y1 + 4, l.x1 + d + 6))
             widths.append(7)
         self._updating = True
         try:
@@ -1111,26 +1199,55 @@ class AutogelWidget(QWidget):
         if self.ga.params.marker_lanes:
             self.quantify(silent=True)
 
-    def _save_ladder(self):
-        name, ok = QInputDialog.getText(self, "Save ladder", "Name for this ladder:")
-        if not ok or not name.strip():
-            return
-        unit, ok = QInputDialog.getItem(self, "Save ladder", "Unit:", ["bp", "kDa"], 0, False)
-        if not ok:
-            return
-        try:
-            sizes = parse_sizes(self.ed_sizes.text())
-            masses = [float(t) for t in self.ed_masses.text().replace(";", ",").split(",") if t.strip()] or None
-            path = save_user_ladder(name.strip(), sizes, unit, masses)
-        except ValueError as e:
-            QMessageBox.warning(self, "autogel", str(e))
-            return
+    def _refresh_presets(self, select: str | None = None):
+        cur = select or self.cb_preset.currentText()
         self.cb_preset.blockSignals(True)
         self.cb_preset.clear()
         self.cb_preset.addItems(list(PRESETS) + ["custom"])
-        self.cb_preset.setCurrentText(name.strip())
         self.cb_preset.blockSignals(False)
-        self._info(f"ladder saved to {path}")
+        self.cb_preset.setCurrentText(cur if cur in PRESETS else "custom")
+        self._preset_changed(self.cb_preset.currentText())
+
+    def _open_ladders(self):
+        from .ladder_dialog import LadderDialog
+        dlg = LadderDialog(self, select=self.cb_preset.currentText())
+        dlg.exec()
+        self._refresh_presets(dlg.chosen)
+        if dlg.chosen:
+            self._info(f"ladder: {dlg.chosen}")
+
+    def _suggest_ladder(self):
+        """Rank library ladders against the bands of the (first) marker lane."""
+        if not self._need():
+            return
+        txt = self.ed_marker_lanes.text().replace(";", ",").replace(" ", ",")
+        try:
+            lane = int(next(t for t in txt.split(",") if t.strip())) - 1
+        except (StopIteration, ValueError):
+            lane = 0
+        if not 0 <= lane < len(self.ga.lanes):
+            QMessageBox.information(self, "autogel", "Detect lanes first and enter the marker lane.")
+            return
+        vols = self.ga._volumes()
+        bl = [(b.y, v) for b, v in zip(self.ga.bands, vols) if b.lane == lane]
+        hits = suggest_ladders([y for y, _ in bl], [v for _, v in bl])
+        if not hits:
+            QMessageBox.information(self, "autogel", f"Lane {lane + 1} has {len(bl)} bands - too few to "
+                                    "recognise a ladder. Detect bands first.")
+            return
+        labels = []
+        for h in hits:
+            also = len(h["names_same_sizes"]) - 1
+            labels.append(f"{h['name']}   ({h['n_sizes']} sizes, {len(bl)} bands"
+                          + (f"; same sizes as {also} other" if also else "") + ")")
+        choice, ok = QInputDialog.getItem(self, "Suggest ladder",
+                                          f"Best matches for the {len(bl)} bands in lane {lane + 1} "
+                                          "(best first - check with your datasheet):", labels, 0, False)
+        if ok and choice:
+            name = hits[labels.index(choice)]["name"]
+            self.cb_preset.setCurrentText(name)
+            self.ga._log("suggest_ladder", {"lane": lane + 1, "ranking": [h["name"] for h in hits]},
+                         f"chosen: {name}")
 
     def _apply_marker(self):
         txt = self.ed_marker_lanes.text().strip()
@@ -1165,6 +1282,8 @@ class AutogelWidget(QWidget):
         if bad:
             self._info(f"ignored sample loads (use lane:µl): {', '.join(bad)}")
         self.ga.params.sample_loads_ul = loads
+        self.ga.params.mass_model = MASS_MODELS[self.cb_mass.currentText()]
+        self.ga.params.deconvolve = self.chk_deconv.isChecked()
         return True
 
     def quantify(self, silent=False):
@@ -1182,7 +1301,9 @@ class AutogelWidget(QWidget):
             msg += c.warnings
         if self.ga.mass_fit:
             mf = self.ga.mass_fit
-            msg.append(f"mass curve: R² = {mf['r2']:.3f} (n={mf['n']}, through origin)")
+            how = "size-dependent" if mf["model"] == "size" else "through origin"
+            msg.append(f"mass curve ({how}): typical error ±{mf['typical_error']:.0%} "
+                       f"(leave-one-out), n={mf['n']} ladder bands")
         self.lbl_cal.setText("\n".join(msg))
         self._fill_table()
         self._refresh_layers()

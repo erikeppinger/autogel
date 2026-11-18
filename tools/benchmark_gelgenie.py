@@ -1,6 +1,8 @@
 """Benchmark autogel against hand-labelled real gels (GelGenie dataset, Zenodo 10.5281/zenodo.14641949).
 
-    python tools/benchmark_gelgenie.py DATA_DIR OUT_DIR [subset ...]
+    python tools/benchmark_gelgenie.py DATA_DIR OUT_DIR [subset ...] [--set name=value ...]
+
+``--set`` changes a detection setting, e.g. ``--set split_shoulders=1 --set noise_floor=0``.
 
 DATA_DIR contains the unzipped subsets (e.g. quantitation_ladder_gels/quantitation_ladder_gels/
 images + masks). Masks: 0 = background, 1 = band.
@@ -99,6 +101,9 @@ def estimate_layout(regions, width: int) -> tuple[int, int]:
     return estimate_lanes(regions), 1
 
 
+EXTRA: dict = {}          # detection settings from --set
+
+
 def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     mask_raw, _, _ = load_raw(mask_path)
     regions0 = components(np.asarray(mask_raw))
@@ -122,7 +127,7 @@ def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
         n_lanes, n_cols = estimate_layout(regions0, m0.shape[1])
     else:
         n_lanes, n_cols = estimate_lanes(regions0), 1
-    ga = GelAnalysis(img, Params(n_lanes=n_lanes or None, n_columns=n_cols), orientation=o0)
+    ga = GelAnalysis(img, Params(n_lanes=n_lanes or None, n_columns=n_cols, **EXTRA), orientation=o0)
     ga.detect_lanes()
     ga.detect_bands()
     secs = time.time() - t
@@ -132,7 +137,8 @@ def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     m = apply_orientation((np.asarray(mask_raw) > 0).astype(np.float32), o, order=0) > 0.5
     regions = components(m)
     gt = [(r.centroid[0], r.centroid[1]) for r in regions]
-    boxes = [(ga.lanes[b.lane].x0, ga.lanes[b.lane].x1, b.y0, b.y1) for b in ga.bands]
+    boxes = [(ga.lanes[b.lane].x0 + ga.lanes[b.lane].dx(b.y), ga.lanes[b.lane].x1 + ga.lanes[b.lane].dx(b.y),
+              b.y0, b.y1) for b in ga.bands]
     owner = [-1] * len(gt)
     for gi, (y, x) in enumerate(gt):
         best = None
@@ -151,7 +157,7 @@ def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     merged = sum(len(v) - 1 for v in used.values())
     missed = sum(1 for o_ in owner if o_ < 0)
     spurious = len(boxes) - len(used)
-    in_lane = sum(1 for (y, x) in gt if any(l.x0 - 3 <= x <= l.x1 + 3 for l in ga.lanes))
+    in_lane = sum(1 for (y, x) in gt if any(l.contains(x, y, pad=3) for l in ga.lanes))
     return {"true_bands": len(gt), "orientation_error": bool(orientation_error),
             "lanes_estimated": n_lanes, "gels_side_by_side": n_cols,
             "lanes_found": len(ga.lanes),
@@ -182,7 +188,8 @@ def overlay(r: dict, path: str):
                                    ec="#56B4E9", lw=0.5))
     for b in ga.bands:
         lane = ga.lanes[b.lane]
-        ax.add_patch(plt.Rectangle((lane.x0, b.y0), lane.width, b.y1 - b.y0, fill=False, ec="#F0E442", lw=0.6))
+        ax.add_patch(plt.Rectangle((lane.x0 + lane.dx(b.y), b.y0), lane.width, b.y1 - b.y0, fill=False,
+                                   ec="#F0E442", lw=0.6))
     ax.set_title(f"{r['image']}  recall {r['recall']}  precision {r['precision']}  "
                  f"(orange = hand mask, yellow = autogel)", fontsize=8)
     ax.axis("off")
@@ -229,5 +236,22 @@ def main(data: str, out: str, subsets: list[str]):
         print(f.read())
 
 
+def _parse_set(args: list[str]) -> list[str]:
+    import dataclasses
+    types = {f.name: f.type for f in dataclasses.fields(Params)}
+    rest, it = [], iter(args)
+    for a in it:
+        if a == "--set":
+            k, _, v = next(it).partition("=")
+            if k not in types:
+                raise SystemExit(f"unknown setting {k!r}")
+            t = str(types[k])
+            EXTRA[k] = (v.lower() in ("1", "true", "yes")) if "bool" in t else float(v) if "float" in t else v
+        else:
+            rest.append(a)
+    return rest
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3:] or SUBSETS)
+    rest = _parse_set(sys.argv[1:])
+    main(rest[0], rest[1], rest[2:] or SUBSETS)

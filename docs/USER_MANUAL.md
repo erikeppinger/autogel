@@ -112,6 +112,16 @@ The **autogel** panel on the right guides you from top to bottom.
    - *rectangle* to draw a new lane
 
    Changes apply about half a second after you stop editing.
+
+   **Curved lanes** (lanes that fan out towards the bottom, or a photo taken at an angle):
+   - Tick *follow curved lanes* (Expert) and detect lanes again. autogel estimates for the whole
+     gel how far the lanes drift sideways with depth, and draws bent lanes as polygons.
+   - Profiles, bands and the exported image follow the bend. A lane is only bent when the drift
+     is consistent and larger than 15 % of the lane width.
+   - It is **off by default**: on straight gels where the lower part holds only the ladder
+     lanes (like the lab's Test gels), it can still find a false drift. Check the result.
+   - A bent lane's outline points can be moved one by one to correct it; dragging the whole
+     outline moves the lane.
 4. Optional: enter **names** separated by commas (e.g. `M, ctrl, s1, s2, …`).
 5. **Several gels in one picture**: stacked (a big gel with two combs) and/or **side by side**
    on the tray.
@@ -138,11 +148,23 @@ The **autogel** panel on the right guides you from top to bottom.
   - *min. signal/noise*: raise it to ignore faint bands, lower it to pick up faint ones.
   - *min. lane coverage*: a real band spans the lane width, a dust speck doesn't. Lower it for
     smeared or tilted bands.
-  - *min. height vs. gel* (Expert, default off): ignores bands weaker than this fraction of the
-    gel's strong bands.
-    - About 0.03 removes most noise "bands" in empty lanes of noisy or JPEG images.
-    - Leave it off when faint ladder bands sit next to very bright samples, or they are removed
-      too.
+  - *automatic noise floor* (Expert, **on** by default): drops a band only if it is both weak
+    (below 7 % of the gel's strong bands) **and** close to the gel's noise (below 10× the noise).
+    - This removes noise "bands" in empty lanes of noisy or JPEG images.
+    - Faint ladder bands next to very bright samples stay, because they are far above the noise.
+    - On the 95 benchmark gels it removed about a quarter of the false detections for about 1 %
+      of the real bands. Your Test gels keep all 19 ladder bands.
+  - *min. height vs. gel* (Expert, default off): a stricter manual cut at this fraction of the
+    gel's strong bands. Leave it off when faint ladder bands sit next to very bright samples.
+  - *split touching bands by peak fit* (Expert, **on**): when two bands touch (no gap between
+    their ranges), their shared signal is divided by fitted peak areas instead of being cut at
+    the dip. This matters for a faint band next to a strong one: a 4:1 pair was measured as
+    4.6:1 before and 4.0:1 now. Such bands have `deconvolved = True` in the table.
+  - *split shoulders* (Expert, **off**): a band with a clear shoulder (two bands too close to
+    show a dip) is split into two.
+    - On simulated doublets it finds every pair down to 1:5 and measures their ratio within 1 %.
+    - Real bands are often slightly lopsided, so it occasionally splits a single band (1 of 38
+      ladder bands on Test_2). Turn it on for close doublets and check the result.
 - **Re-detect bands in selected lane** re-runs detection for one lane, e.g. after you moved it.
 - To correct bands, select the **bands** layer:
   - Each rectangle is one band. Its **height is the integration range**.
@@ -161,8 +183,15 @@ The **autogel** panel on the right guides you from top to bottom.
   - saturated points
 
 ### 3.4 Marker / calibration
-1. Choose the **ladder**. The default is *NEB Quick-Load Purple 1 kb Plus (N0550)*. Sizes (and
-   masses, if known) are filled in and can be edited. The grey line under the list shows:
+1. Choose the **ladder**. The default is *NEB Quick-Load Purple 1 kb Plus (N0550)*.
+   - **Suggest ladder** (after detecting bands, with the marker lane entered) ranks the library
+     ladders by how well they fit that lane's bands: positions and the brightness pattern (e.g.
+     the bright 3 kb / 1 kb / 500 bp bands of the 1 kb Plus ladder). Pick one of the three best.
+     - On Test_1 and Test_2, NEB 1 kb Plus ranks first in all four ladder lanes.
+     - Ladders that differ only by a factor (100 bp vs. 1 kb steps) can look alike: check the
+       suggestion against what you loaded.
+   - Sizes (and masses, if known) are filled in and can be edited. The grey line under the list
+     shows:
    - whether the entry was checked against the vendor's data (✔) or not yet (⚠)
    - which load the datasheet masses refer to
    - notes such as co-migrating doublets
@@ -176,8 +205,17 @@ The **autogel** panel on the right guides you from top to bottom.
      - Example: N0550 is 0.1 µg/µl, so 5 µl = 0.5 µg and the datasheet masses are halved.
    - **datasheet load (µg)** is filled in from the library: NEB 1 kb Plus = 1 µg, NEB 1 kb and
      100 bp = 0.5 µg, GeneRuler = 0.5 µg.
-   - autogel fits band volume against ng for the ladder bands (unsaturated bands only, line
-     through the origin). The table then gets `est_mass_ng`, and the fit's R² is shown.
+   - autogel learns from the ladder how much signal one ng gives **at each fragment size** and
+     uses that for the samples (*mass curve: size-dependent*, the default).
+     - Why: on real gels the signal per ng is highest at 1.5–3 kb and drops to about 20 % at
+       100 bp and about 60 % at 10 kb (small fragments diffuse, very long ones stain and
+       transfer less). A single straight line therefore under-estimates small bands 3–5×.
+     - On Test_1/Test_2 the typical error for a ladder band left out of the fit dropped from
+       83–96 % (one straight line) to 19 %.
+     - The panel shows this *typical error*. The table gets `est_mass_ng` and
+       `mass_size_corrected` (False if the band's size is unknown; then the average response is
+       used).
+     - *mass curve: one slope through origin* (Expert) is the old method.
    - **sample loads** (`lane:µl`, e.g. `2:5, 3:5`) adds `conc_ng_per_ul`.
 4. **Valid size range** (optional): every gel resolves only a certain size range well.
    - *automatic (whole ladder)* is the default.
@@ -185,8 +223,6 @@ The **autogel** panel on the right guides you from top to bottom.
      fills in a typical range; edit **min / max** to set your own.
    - Only ladder bands inside the range are used for the size curve and the ng curve.
    - Sample bands outside it are marked `size_in_range = False` and listed as a warning.
-   - Example (Test_1, NEB 1 kb Plus): the ng curve improves from R² 0.67 (whole ladder) to 0.76
-     (0.5–10 kb) and 0.87 (1–8 kb).
    - The gel-type ranges are common guidelines. Adjust them to your buffer and run conditions.
 5. Click **Calibrate & quantify**.
 6. If the number of detected marker bands differs from the ladder (dust, or a band too faint or
@@ -215,8 +251,25 @@ The ApE ladders come from the free plasmid editor ApE by M. Wayne Davis. They ha
 values, so they're for sizing only. Where a ladder is in both lists, the checked entry is used.
 For the NEB ladders that are in both, ApE's sizes match the datasheets exactly.
 
-**Your own ladders:** edit the sizes and masses, then click **Save sizes/masses as my ladder…**.
-It is stored in `~/.autogel/ladders.json` and appears in the list from then on.
+**Your own ladders and the shared library — Ladders…** (both modes) opens the ladder manager:
+
+| To | Do this |
+|---|---|
+| Add a ladder | **New**, fill in name, unit, sizes (any order, e.g. pasted from the datasheet), optional masses and the load they refer to, datasheet link → **Save as my ladder** |
+| Change a built-in ladder (e.g. your lot differs) | select it, edit, **Save as my ladder** → saved as "… (my copy)"; the original stays |
+| Delete | select one of *your* ladders → **Delete** (built-in ones can't be deleted) |
+| Give a ladder to a colleague | **Export…** → a small `.json` file; they use **Import…** |
+| Get it into autogel for everybody | **Suggest for library…** opens a pre-filled GitHub issue in your browser (needs a free GitHub account; nothing is sent until you submit it). After checking against the datasheet it is added to the library and ships with the next release |
+| Get new library ladders without reinstalling | **Update library from GitHub…** downloads the current checked list. Your own ladders are kept. If the download fails or the file is invalid, the old library stays |
+| Use it | **Use this ladder** (unsaved edits are saved first) |
+
+Command line: `autogel ladders --import file.json` (add `--replace` to overwrite),
+`autogel ladders --export "name" file.json`, `autogel ladders --update`.
+
+Your ladders are stored in `~/.autogel/ladders.json`; a downloaded library update in
+`~/.autogel/ladders_update.json`. Every entry is checked when it's saved, imported or downloaded
+(units, sizes top to bottom, as many masses as sizes); a broken entry is skipped, never crashes
+the program.
 
 > ⚠ Ladder data comes from vendor datasheets. Entries marked `"verified": false` in
 > `autogel/ladders.json` have not yet been checked. Lots can change, so compare with the
@@ -332,7 +385,9 @@ Options of `run`:
 | `pct_of_lane` | share of all band volume in this lane |
 | `saturated`, `saturated_px` | band contains clipped pixels. The volume is too low |
 | `lane_coverage` | fraction of the lane width the band covers. Low values suggest dust |
+| `deconvolved` | True if the band touched a neighbour and its volume comes from the peak fit (see 3.3) |
 | `est_mass_ng`, `mass_out_of_range` | from the ladder mass curve. *Out of range* = outside the ladder masses |
+| `mass_size_corrected` | True if the size-dependent response at this band's size was used (False: size unknown, average response) |
 | `conc_ng_per_ul` | `est_mass_ng / µl loaded` |
 | `source` | `auto` (detected) or `user` (added or edited by you) |
 
@@ -351,9 +406,9 @@ Options of `run`:
 
 | Gels | autogel finds | of its detections are outlined bands |
 |---|---|---|
-| ladder test gels | 86 % of the bands | 80 % |
-| routine lab gels (JPEG) | 81 % | 27 % |
-| gels from five other labs (incl. 5 images with gels side by side) | 83 % | 33 % |
+| ladder test gels | 85 % of the bands | 81 % |
+| routine lab gels (JPEG) | 81 % | 45 % |
+| gels from five other labs (incl. 5 images with gels side by side) | 83 % | 38 % |
 
 - The automatic 90° decision was wrong on 1 of 95 images (version 0.3.0: 4), and that image
   got the *Lane direction uncertain* warning. Check that the lanes run top to bottom and click
@@ -363,7 +418,8 @@ Options of `run`:
 **In practice:**
 - Always look over the detected bands of a new gel type.
 - Delete spurious ones and add missed ones; both take a click, and the report records it.
-- For noisy JPEG gels, try *min. height vs. gel* = 0.03.
+- The automatic noise floor (on by default) already removes most noise "bands" of JPEG gels;
+  *min. height vs. gel* = 0.03 removes more, but can also remove faint ladder bands.
 
 ## 8. Troubleshooting
 
@@ -375,7 +431,9 @@ Options of `run`:
 | Faint band missed | Lower **min. signal/noise**, or draw the band |
 | Two bands merged | Draw two rectangles with the right limits instead of one |
 | Sizes wrong | Check that the marker band count matches the ladder (warning under *Calibrate*) |
-| Mass R² low | Normal for the smallest and largest fragments, which stain less per ng and are more diffuse. Use only bands within the ladder's mass range, and don't quantify saturated bands |
+| ng estimate typical error high | Check that the right ladder and load are set, and that the ladder bands aren't saturated. The size-dependent mass curve (default) already corrects for small fragments giving less signal per ng |
+| A real band was split in two | *split shoulders* (Expert) is on: switch it off, or delete one half and resize the other |
+| Lanes are drawn bent although they are straight | Untick *follow curved lanes* (Expert), or drag the lane back |
 | Two gels in one image, lanes look wrong | Set **gels side by side** or **gel rows (combs)** to 2 and check the green split line |
 | Lanes run across the screen / bands look like vertical streaks | **Rotate 90°**: heavily smeared samples can fool the automatic orientation |
 | Many gels to do | Use **Batch** (section 4) with one finished gel as the template |

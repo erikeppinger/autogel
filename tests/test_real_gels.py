@@ -24,3 +24,12 @@ def test_example_gel(name):
     df = ga.quantify()
     assert not any(c.warnings for c in ga.calibrations)
     assert df["size_bp"].notna().all()
+    # mass curve: size-dependent response; a ladder band left out is predicted within ~25 %
+    # (one slope through the origin: ~80 %, see lab book 0.4.0)
+    assert ga.mass_fit["model"] == "size" and ga.mass_fit["typical_error"] < 0.3
+    # ladder recognition: the 1 kb Plus pattern (bright 3 kb / 1 kb / 500 bp bands) ranks first
+    from autogel.markers import suggest_ladders
+    vols = ga._volumes()
+    bl = [(b.y, v) for b, v in zip(ga.bands, vols) if b.lane == 0]
+    hits = suggest_ladders([y for y, _ in bl], [v for _, v in bl])
+    assert PRESET in hits[0]["names_same_sizes"], hits

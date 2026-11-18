@@ -82,6 +82,7 @@ def run_batch(images: list[str], template: Params | str, out_dir: str, progress=
             row.update({"status": "check" if warn else "ok", "lanes": len(ga.lanes), "bands": len(df),
                         "saturated_bands": n_sat,
                         "mass_r2": round(ga.mass_fit["r2"], 3) if ga.mass_fit else None,
+                        "mass_typical_error": round(ga.mass_fit["typical_error"], 3) if ga.mass_fit else None,
                         "warnings": " | ".join(warn), "output": out,
                         "report": os.path.join(out, f"{stem}_report.md"),
                         "session": os.path.join(out, f"{stem}_session.json")})

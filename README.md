@@ -3,9 +3,13 @@
 Automatic lane and band detection and quantification for **agarose and SDS-PAGE gels**, with an
 interactive **napari** editor for corrections. Built on numpy/scipy, no GPU needed.
 
-- Automatic orientation, lane and band detection, using the lane count you confirm
-- Background correction (rolling ball / lane edges), dust rejection, saturation flags
-- Sizes from one or two marker lanes; ng estimates from ladder band masses
+- Automatic orientation, lane and band detection (incl. curved lanes), using the lane count you confirm
+- Background correction (rolling ball / lane edges), dust rejection, automatic noise floor,
+  saturation flags; touching bands split by peak fitting
+- Sizes from one or two marker lanes; ng estimates from ladder band masses with a
+  size-dependent response curve
+- Ladder library (curated + ApE + your own): ladder suggestion from the band pattern,
+  import/export, "suggest for library" via GitHub, in-app library update
 - Edit lanes and bands directly on the image; every step is logged and replayable
 - Several gels per image (side by side and/or stacked), batch processing with the same settings
 - Export: CSV / XLSX tables, lane profiles (CSV + PDF), annotated image, lab-book report

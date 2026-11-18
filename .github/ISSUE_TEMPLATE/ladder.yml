@@ -1,0 +1,68 @@
+name: Suggest a ladder for the library
+description: Add a DNA or protein ladder (marker) to autogel's ladder library.
+title: "Ladder: "
+labels: ["ladder"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! autogel fills this form when you click **Ladders… → Suggest for library**.
+        A maintainer compares it with the vendor datasheet, adds it to `autogel/ladders.json`
+        and it ships with the next release. Existing installs get it via
+        **Ladders… → Update library from GitHub**.
+  - type: input
+    id: name
+    attributes:
+      label: Ladder name
+      placeholder: "e.g. NEB Quick-Load Purple 1 kb Plus (N0550)"
+    validations:
+      required: true
+  - type: input
+    id: vendor
+    attributes:
+      label: Vendor
+  - type: input
+    id: catalog
+    attributes:
+      label: Catalog number
+  - type: dropdown
+    id: unit
+    attributes:
+      label: Unit
+      options: ["bp", "kDa"]
+    validations:
+      required: true
+  - type: textarea
+    id: sizes
+    attributes:
+      label: Band sizes, top to bottom of the gel
+      placeholder: "10002, 8001, 6001, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: masses
+    attributes:
+      label: Mass per band (optional; ng for DNA, µg for protein), same order as the sizes
+  - type: input
+    id: reference_load
+    attributes:
+      label: Load the masses refer to (e.g. "1 µg")
+  - type: input
+    id: source
+    attributes:
+      label: Datasheet link
+      placeholder: "https://..."
+    validations:
+      required: true
+  - type: textarea
+    id: json
+    attributes:
+      label: Entry as exported by autogel (filled automatically)
+      render: json
+  - type: checkboxes
+    id: check
+    attributes:
+      label: Check
+      options:
+        - label: I compared the sizes (and masses) with the datasheet of the lot I use.
+          required: true

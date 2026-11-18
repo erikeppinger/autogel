@@ -79,13 +79,18 @@ def annotated_image(ga: GelAnalysis, path: str, df: pd.DataFrame | None = None):
         font = small = ImageFont.load_default()
     marker = {L - 1 for L in ga.params.marker_lanes}
     for i, l in enumerate(ga.lanes):
-        d.rectangle([l.x0, min(l.y0, l.y1), l.x1, max(l.y0, l.y1)],
-                    outline="#E69F00" if i in marker else "#56B4E9", width=2)
+        if l.bend:                                      # curved lane: polygon along its centre line
+            d.polygon([(float(x), float(y)) for y, x in l.outline()],
+                      outline="#E69F00" if i in marker else "#56B4E9", width=2)
+        else:
+            d.rectangle([l.x0, min(l.y0, l.y1), l.x1, max(l.y0, l.y1)],
+                        outline="#E69F00" if i in marker else "#56B4E9", width=2)
         d.text((l.x, max(0, l.y0 - 4)), l.name, fill="white", font=font, anchor="ms",
                stroke_width=2, stroke_fill="black")
     for b in ga.bands:
         l = ga.lanes[b.lane]
-        d.rectangle([l.x0, b.y0, l.x1, b.y1 + 1],
+        o = l.dx(b.y)
+        d.rectangle([l.x0 + o, b.y0, l.x1 + o, b.y1 + 1],
                     outline="#F0E442" if b.source == "auto" else "#CC79A7", width=1)
     # size labels beside the lanes (markers outward, samples to the right), decluttered
     labels = plan_labels(ga, df, set(range(len(ga.lanes))))
@@ -160,13 +165,22 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
             axs[0, 0].set_ylabel(f"size ({ga.params.marker_unit})")
             axs[0, 0].legend(fontsize=7)
             if ga.mass_fit:
-                pts = np.array(ga.mass_fit["points"])
-                axs[0, 1].plot(pts[:, 0], pts[:, 1], "o", ms=3)
-                xx = np.linspace(0, pts[:, 0].max() * 1.05, 10)
-                axs[0, 1].plot(xx, ga.mass_fit["slope"] * xx, "-")
-                axs[0, 1].set_xlabel(f"ladder band mass ({ga.mass_fit['unit']})")
-                axs[0, 1].set_ylabel("integrated intensity (a.u.)")
-                axs[0, 1].set_title(f"R² = {ga.mass_fit['r2']:.3f}", fontsize=9)
+                mf = ga.mass_fit
+                pts = np.array(mf["points"])
+                ax = axs[0, 1]
+                if mf["model"] == "size":           # signal per ng vs fragment size
+                    ax.semilogx(pts[:, 2], pts[:, 1] / pts[:, 0], "o", ms=3)
+                    ll = np.linspace(*mf["log_size_range"], 100)
+                    ax.semilogx(10 ** ll, 10 ** np.polyval(mf["coef"], ll), "-")
+                    ax.set_xlabel(f"ladder band size ({ga.params.marker_unit})")
+                    ax.set_ylabel(f"intensity per {mf['unit']}")
+                else:
+                    ax.plot(pts[:, 0], pts[:, 1], "o", ms=3)
+                    xx = np.linspace(0, pts[:, 0].max() * 1.05, 10)
+                    ax.plot(xx, mf["slope"] * xx, "-")
+                    ax.set_xlabel(f"ladder band mass ({mf['unit']})")
+                    ax.set_ylabel("integrated intensity (a.u.)")
+                ax.set_title(f"mass curve: typical error ±{mf['typical_error']:.0%} (leave-one-out)", fontsize=9)
             fig.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)

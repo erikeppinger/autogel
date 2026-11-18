@@ -42,8 +42,14 @@ def main(argv=None):
     b.add_argument("--template", required=True,
                    help="session .json of a gel analysed with the wanted settings (lanes, ladder, ...)")
     b.add_argument("--out", required=True, help="output folder")
-    lad = sub.add_parser("ladders", help="list the ladder library")
+    lad = sub.add_parser("ladders", help="list, import, export or update the ladder library")
     lad.add_argument("filter", nargs="?", default="", help="text to filter by, e.g. NEB or kDa")
+    lad.add_argument("--import", dest="import_file", metavar="FILE",
+                     help="add the ladders of a .json file to your library")
+    lad.add_argument("--replace", action="store_true", help="with --import: replace ladders of the same name")
+    lad.add_argument("--export", nargs=2, metavar=("NAME", "FILE"), help="write one ladder to a file")
+    lad.add_argument("--update", action="store_true",
+                     help="download the newest curated library from the project's GitHub page")
     g = sub.add_parser("gui", help="open the napari editor")
     g.add_argument("image", nargs="?")
     a = ap.parse_args(argv)
@@ -54,6 +60,24 @@ def main(argv=None):
         return
 
     if a.cmd == "ladders":
+        from . import markers
+        if a.import_file:
+            r = markers.import_ladders(a.import_file, overwrite=a.replace)
+            print(f"added {len(r['added'])}, replaced {len(r['replaced'])}, skipped {len(r['skipped'])}"
+                  + (f" (exists; use --replace): {', '.join(r['skipped'])}" if r["skipped"] else ""))
+            for err in r["errors"]:
+                print("problem:", err)
+            return
+        if a.export:
+            if a.export[0] not in PRESETS:
+                ap.error(f"unknown ladder {a.export[0]!r} - see 'autogel ladders'")
+            markers.export_ladders([a.export[0]], a.export[1])
+            print(f"wrote {a.export[1]}")
+            return
+        if a.update:
+            n, path = markers.update_library()
+            print(f"library updated: {n} curated ladders ({path})")
+            return
         for name, e in PRESETS.items():
             line = f"{name}  [{e['unit']}, {len(e['sizes'])} bands"
             line += (", masses" if e.get("masses") else "") + (", verified" if e.get("verified") else "") + "]"

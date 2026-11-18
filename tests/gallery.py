@@ -38,6 +38,7 @@ class Scenario:
     band_sigma: float = 5.0
     tilt_deg: float = 0.0
     smile_px: float = 0.0                  # edge lanes lag behind the centre by this much
+    bend_px: float = 0.0                   # curved lanes: edge lanes drift sideways by this much at the bottom
     dust: int = 0
     scratches: int = 0
     smear_lanes: tuple = ()
@@ -65,6 +66,8 @@ SCENARIOS = [
     Scenario("agarose_side_by_side", "two gels side by side on the tray (own ladders), divider between",
              columns=2, n_lanes=10, W=900, marker_lanes=(0, 9)),
     Scenario("agarose_dirty", "dust specks and scratches", dust=120, scratches=8),
+    Scenario("agarose_curved_lanes", "lanes fan out towards the bottom (edge lanes drift 30 px sideways)",
+             bend_px=30),
     Scenario("agarose_smears_empty", "degraded-DNA smears and two empty lanes",
              smear_lanes=(3, 7), empty_lanes=(5, 9)),
     Scenario("agarose_overexposed", "overexposed: bright bands clipped", amp=26000, clip=30000),
@@ -120,11 +123,13 @@ def _signal(sc: Scenario, truth: dict) -> np.ndarray:
     x_first = (W - (sc.n_lanes - 1) * sc.spacing) / 2
     for k in range(sc.n_lanes):
         xc = x_first + k * sc.spacing
-        e1 = np.clip(-(xx - (xc - sc.lane_w / 2)) / 1.5, -60, 60)
-        e2 = np.clip((xx - (xc + sc.lane_w / 2)) / 1.5, -60, 60)
+        # curved lanes: the centre drifts outward with depth (fan-out), quadratically
+        xcy = xc + sc.bend_px * ((xc - W / 2) / (W / 2)) * np.clip((yy - 80) / (H - 80), 0, 1) ** 2
+        e1 = np.clip(-(xx - (xcy - sc.lane_w / 2)) / 1.5, -60, 60)
+        e2 = np.clip((xx - (xcy + sc.lane_w / 2)) / 1.5, -60, 60)
         across = 1 / (1 + np.exp(e1)) / (1 + np.exp(e2))
         smile = sc.smile_px * ((xc - W / 2) / (W / 2)) ** 2          # edges lag behind
-        bow = 3.0 * ((xx - xc) / (sc.lane_w / 2)) ** 2                # bands slightly curved
+        bow = 3.0 * ((xx - xcy) / (sc.lane_w / 2)) ** 2                # bands slightly curved
         for size, amount in truth[k]:
             y = _y_for(size, sc) - smile
             sig = sc.band_sigma * (1 + 0.6 * (y - 200) / H)            # lower bands broader

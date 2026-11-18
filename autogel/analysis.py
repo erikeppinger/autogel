@@ -19,6 +19,14 @@ from . import __version__
 from .imageio import GelImage, load_gel
 from .markers import PRESETS, MarkerCalibration, assign_marker
 
+# shoulder splitting (Params.split_shoulders): the smaller part must carry at least this share of the
+# larger one (1:5) - real bands are slightly lopsided and a small Gaussian fits their tail; and the
+# second curvature minimum must stand out of the curvature noise by this factor
+SHOULDER_MIN_SHARE = 0.2
+# curved lanes: a traced bend is applied only above this fraction of the lane width
+BEND_MIN_FRAC = 0.15
+SHOULDER_D2_SNR = 6.0
+
 
 # ------------------------------------------------------------------ data model
 @dataclass
@@ -39,6 +47,13 @@ class Params:
                                         # (95th pct.). ~0.03 removes noise "bands" in empty lanes of
                                         # noisy/JPEG images, but would also drop faint ladder bands
                                         # on gels with very bright samples - therefore off by default
+    # automatic noise floor: drop a band only if it is BOTH weak relative to the gel's strong bands
+    # (< noise_floor_rel x 95th pct.) AND close to the gel's noise (< noise_floor_snr x gel noise).
+    # Faint ladder bands next to bright samples stay (far above noise); noise "bands" in empty
+    # lanes of JPEG/noisy images go. Benchmark: -28 % false bands for -1 % real bands.
+    noise_floor: bool = True
+    noise_floor_rel: float = 0.07
+    noise_floor_snr: float = 10.0
     min_band_distance: int = 6          # px
     skip_well_px: int = 25              # rows below the well ignored by band detection
     bound_frac: float = 0.1             # band edges where signal falls to this fraction of peak
@@ -55,6 +70,19 @@ class Params:
     marker_load: float | None = None
     marker_ref_load: float | None = None
     sample_loads_ul: dict[str, float] = field(default_factory=dict)  # lane number (str) -> µl loaded
+    # mass curve: "size" = response per ng depends on fragment size (measured on the ladder:
+    # small and very large fragments give less signal per ng); "linear" = one slope through origin
+    mass_model: str = "size"
+    # overlapping bands (touching integration ranges): split the shared signal by fitted Gaussian
+    # peak areas instead of at the valley (a faint band next to a strong one is otherwise skewed)
+    deconvolve: bool = True
+    # curved lanes (fan-out): estimate per gel how lanes drift sideways with depth and follow it.
+    # Opt-in: on the lab's straight Test gels, where lower strips hold only the two ladder lanes,
+    # the estimate still found a false drift - so it is off unless the user switches it on.
+    curved_lanes: bool = False
+    # unresolved doublets (a shoulder, no valley): split a band in two when the profile shows two
+    # curvature minima AND two Gaussians fit much better than one
+    split_shoulders: bool = False
 
 
 @dataclass
@@ -67,6 +95,7 @@ class Lane:
     source: str = "auto"
     tier: int = 0                       # gel row (0 = top comb)
     column: int = 0                     # gel side by side (0 = left)
+    bend: list[list[float]] | None = None  # curved lane: [[y, dx], ...] centre offset vs. y (None = straight)
 
     @property
     def x0(self):
@@ -75,6 +104,29 @@ class Lane:
     @property
     def x1(self):
         return self.x + self.width / 2
+
+    def dx(self, y):
+        """Sideways offset of the lane centre at row(s) y (0 for a straight lane)."""
+        if not self.bend:
+            return np.zeros_like(np.asarray(y, float)) if np.ndim(y) else 0.0
+        ys, ds = zip(*self.bend)
+        out = np.interp(y, ys, ds)
+        return out if np.ndim(y) else float(out)
+
+    def x_at(self, y):
+        return self.x + self.dx(y)
+
+    def contains(self, x: float, y: float, pad: float = 0.0) -> bool:
+        c = self.x_at(y)
+        return c - self.width / 2 - pad <= x <= c + self.width / 2 + pad
+
+    def outline(self, n: int = 12) -> np.ndarray:
+        """Polygon (row, col) of the lane: left edge top->bottom, right edge bottom->top."""
+        ys = np.linspace(self.y0, self.y1, n if self.bend else 2)
+        c = self.x_at(ys)
+        left = np.c_[ys, c - self.width / 2]
+        right = np.c_[ys[::-1], (c + self.width / 2)[::-1]]
+        return np.vstack([left, right])
 
 
 @dataclass
@@ -156,6 +208,9 @@ class GelAnalysis:
                 info.append(f"{prefix + ': ' if prefix else ''}{len(peaks)} lanes, width {width:.0f} px, "
                             f"spacing {spacing:.1f} px, well row {well:.0f}")
         self.lanes = lanes
+        n_bent = self.trace_lanes(bandimg) if self.params.curved_lanes else 0
+        if n_bent:
+            info.append(f"{n_bent} curved lane(s) traced")
         self.well_y = lanes[0].y0 + 10 if lanes else 0.0
         self.bands = []
         self._profiles = {}
@@ -165,6 +220,85 @@ class GelAnalysis:
                                    "column_bounds": [[int(x), int(y)] for x, y in columns]},
                   "; ".join(info))
         return self.lanes
+
+    def trace_lanes(self, bandimg: np.ndarray | None = None, strips: int = 8) -> int:
+        """Curved / fanned-out lanes, estimated per gel from ALL its lanes at once.
+
+        In each horizontal strip the column profile of the gel is matched to the profile of the
+        whole gel height, allowing a shift and a stretch about the gel centre. Lanes that fan out
+        (or a photo taken at an angle) show up as a stretch that changes with depth. Shift and
+        stretch are smoothed over the strips (quadratic in y) and turned into a bend per lane.
+        Single-lane tracing was tried first: noise, dust and vignetting gave false bends.
+        A bend is applied only when it is consistent over the strips and larger than
+        BEND_MIN_FRAC of the lane width. Returns the number of curved lanes."""
+        b = self._band_feature_image() if bandimg is None else bandimg
+        H, W = b.shape
+        for l in self.lanes:
+            l.bend = None
+        n = 0
+        groups: dict[tuple, list[int]] = {}
+        for i, l in enumerate(self.lanes):
+            groups.setdefault((l.tier, l.column), []).append(i)
+        for idx in groups.values():
+            if len(idx) < 3:
+                continue
+            lanes = [self.lanes[i] for i in idx]
+            xs = np.array([l.x for l in lanes])
+            sp = float(np.median(np.diff(np.sort(xs))))
+            ca, cb = max(0, int(xs.min() - sp)), min(W, int(xs.max() + sp) + 1)
+            top = int(max(l.y0 for l in lanes) + 10 + self.params.skip_well_px)
+            bot = int(min(l.y1 for l in lanes))
+            if bot - top < 8 * strips or cb - ca < 20:
+                continue
+            xc = float(xs.mean())
+            xx = np.arange(ca, cb, dtype=float)
+
+            def norm(p):
+                p = p - p.mean()
+                return p / (np.linalg.norm(p) + 1e-12)
+            tmpl = b[top:bot, ca:cb].mean(0)
+            scales = np.arange(0.95, 1.0501, 0.0025)
+            max_shift = 0.35 * sp
+            shifts = np.arange(-max_shift, max_shift + 1e-9, 1.0)
+            edges = np.linspace(top, bot, strips + 1)
+            pts = []
+            for k in range(strips):
+                r0, r1 = int(edges[k]), int(edges[k + 1])
+                prof = norm(b[r0:r1, ca:cb].mean(0))
+                best = (-2.0, 0.0, 1.0)
+                for c in scales:
+                    for s in shifts:
+                        # strip position x corresponds to template position xc + (x - xc - s) / c
+                        t = np.interp(xc + (xx - xc - s) / c, xx, tmpl)
+                        r = float(prof @ norm(t))
+                        if r > best[0]:
+                            best = (r, s, c)
+                if best[0] > 0.5:                      # the strip shows the lane pattern
+                    pts.append((0.5 * (r0 + r1), best[1], best[2], best[0]))
+            if len(pts) < 5:
+                continue
+            y, s_, c_, w = map(np.asarray, zip(*pts))
+            half = float(xs.max() - xc)
+            # offsets of the outermost lane: shift + stretch x half span
+            d_out = s_ + (c_ - 1) * half
+            cf_s = np.polyfit(y, s_, 2, w=w)
+            cf_c = np.polyfit(y, c_, 2, w=w)
+            res = d_out - (np.polyval(cf_s, y) + (np.polyval(cf_c, y) - 1) * half)
+            ys = np.linspace(top, bot, 9)
+            model = np.polyval(cf_s, ys) + (np.polyval(cf_c, ys) - 1) * half
+            rms = float(np.sqrt(np.mean(res ** 2)))
+            if rms > 0.1 * sp or np.ptp(model) < 4 * max(rms, 0.5):
+                continue
+            for l in lanes:
+                ny = np.linspace(l.y0, l.y1, 9)
+                yy = np.clip(ny, top, bot)
+                d = np.polyval(cf_s, yy) + (np.polyval(cf_c, yy) - 1) * (l.x - xc)
+                if np.ptp(d) > BEND_MIN_FRAC * l.width:
+                    l.bend = [[float(a), float(e)] for a, e in zip(ny, d)]
+                    n += 1
+        if n:
+            self._profiles = {}
+        return n
 
     def column_bounds(self, bandimg: np.ndarray | None = None) -> list[tuple[int, int]]:
         """Column ranges of gels lying side by side. Manual splits win; otherwise searched."""
@@ -508,14 +642,15 @@ class GelAnalysis:
         new_bands = []
         for b in self.bands:
             if b.lane < len(old_lanes):
-                x = old_lanes[b.lane].x
-                hit = [j for j, l in enumerate(lanes) if l.x0 <= x <= l.x1]
+                x = old_lanes[b.lane].x_at(b.y)
+                hit = [j for j, l in enumerate(lanes) if l.contains(x, b.y)]
                 if hit:
                     b.lane = hit[0]
                     new_bands.append(b)
         self.bands = new_bands
         self._log("set_lanes", {"reason": reason,
-                                "lanes": [[round(l.x, 1), round(l.width, 1), round(l.y0), round(l.y1)] for l in lanes]},
+                                "lanes": [[round(l.x, 1), round(l.width, 1), round(l.y0), round(l.y1)]
+                                          + ([round(l.dx(l.y1) - l.dx(l.y0), 1)] if l.bend else []) for l in lanes]},
                   f"{old} -> {len(lanes)} lanes, {len(new_bands)} bands kept")
 
     def set_lane_names(self, names: list[str]):
@@ -535,16 +670,23 @@ class GelAnalysis:
         ya, yb = sorted((lane.y0, lane.y1))
         r0, r1 = max(0, int(ya)), min(H, int(yb) + 1)
         r1 = max(r0, r1)
-        strip = a[r0:r1, c0:c1]
-        raw = strip.sum(1, dtype=np.float64)
-        sat = self.gel.raw_max[r0:r1, c0:c1].sum(1)
-        base = self._baseline(raw, i, (r0, r1, c0, c1))
-        prof = {"y": np.arange(r0, r1, dtype=float), "raw": raw, "baseline": base,
-                "corr": raw - base, "sat": sat, "cols": (c0, c1)}
+        rows = np.arange(r0, r1)
+        off = np.rint(lane.dx(rows.astype(float))).astype(int) if lane.bend else np.zeros(len(rows), int)
+        raw = np.zeros(len(rows))
+        sat = np.zeros(len(rows), dtype=np.int64)
+        for o in np.unique(off):
+            m = off == o
+            ca, cb = max(0, c0 + o), min(W, c1 + o)
+            if cb > ca:
+                raw[m] = a[rows[m], ca:cb].sum(1, dtype=np.float64)
+                sat[m] = self.gel.raw_max[rows[m], ca:cb].sum(1)
+        base = self._baseline(raw, i, (r0, r1, c0, c1), off)
+        prof = {"y": rows.astype(float), "raw": raw, "baseline": base,
+                "corr": raw - base, "sat": sat, "cols": (c0, c1), "offset": off}
         self._profiles[i] = prof
         return prof
 
-    def _baseline(self, raw: np.ndarray, i: int, box) -> np.ndarray:
+    def _baseline(self, raw: np.ndarray, i: int, box, off: np.ndarray | None = None) -> np.ndarray:
         m = self.params.bg_method
         if m == "none":
             return np.zeros_like(raw)
@@ -552,8 +694,9 @@ class GelAnalysis:
             r0, r1, c0, c1 = box
             a = self.data
             g = max(2, int(self.lanes[i].width * 0.1))
-            left = a[r0:r1, max(0, c0 - 2 * g): max(0, c0 - g)]
-            right = a[r0:r1, c1 + g: c1 + 2 * g]
+            o = int(np.median(off)) if off is not None and len(off) else 0
+            left = a[r0:r1, max(0, c0 + o - 2 * g): max(0, c0 + o - g)]
+            right = a[r0:r1, c1 + o + g: c1 + o + 2 * g]
             parts = [p for p in (left, right) if p.size]
             if not parts:
                 return np.zeros_like(raw)
@@ -596,6 +739,14 @@ class GelAnalysis:
                 new.append((b, float(sm[p])))
         # gel-wide floor: compare with the strong bands of the whole gel (incl. bands kept from
         # other lanes) - a lane-relative threshold cannot judge a lane that holds only noise
+        floor = 0
+        if new and self.params.noise_floor:
+            ref = float(np.percentile([h for _, h in new] + [self._peak_height(b) for b in self.bands], 95))
+            gel_noise = self.gel_noise()
+            keep = [(b, h) for b, h in new
+                    if not (h < self.params.noise_floor_rel * ref and h < self.params.noise_floor_snr * gel_noise)]
+            floor = len(new) - len(keep)
+            new = keep
         weak = 0
         if new and self.params.min_gel_rel > 0:
             others = [self._peak_height(b) for b in self.bands]
@@ -603,6 +754,14 @@ class GelAnalysis:
             keep = [(b, h) for b, h in new if h >= self.params.min_gel_rel * ref]
             weak = len(new) - len(keep)
             new = keep
+        split = 0
+        if self.params.split_shoulders:
+            out = []
+            for b, h in new:
+                parts = self._split_shoulder(b)
+                split += len(parts) - 1
+                out += [(p_, h) for p_ in parts]
+            new = out
         for b, _ in new:
             self.bands.append(b)
             total += 1
@@ -611,12 +770,67 @@ class GelAnalysis:
                                    "bg_method": self.params.bg_method, "bg_radius": self.params.bg_radius,
                                    "min_snr": self.params.min_snr, "min_rel_height": self.params.min_rel_height,
                                    "min_gel_rel": self.params.min_gel_rel,
+                                   "noise_floor": self.params.noise_floor,
+                                   "split_shoulders": self.params.split_shoulders,
                                    "skip_well_px": self.params.skip_well_px},
                   f"{total} bands ({rejected} rejected as narrower than "
                   f"{self.params.min_coverage:.0%} of lane width: dust/specks"
                   + (f"; {weak} below {self.params.min_gel_rel:.0%} of the gel's strong bands" if weak else "")
+                  + (f"; {floor} at the noise floor" if floor else "")
+                  + (f"; {split} shoulder(s) split into two bands" if split else "")
                   + ")")
         return self.bands
+
+    def gel_noise(self) -> float:
+        """Typical noise of a lane profile in this gel (median over lanes of the robust
+        point-to-point noise), in profile units."""
+        vals = []
+        for i in range(len(self.lanes)):
+            c = self.lane_profile(i)["corr"]
+            if len(c) > 10:
+                vals.append(1.4826 * np.median(np.abs(np.diff(c))) / np.sqrt(2))
+        return float(np.median(vals)) if vals else 0.0
+
+    def _split_shoulder(self, b: Band) -> list[Band]:
+        """[b] or two bands if b is an unresolved doublet (see Params.split_shoulders)."""
+        from scipy.optimize import curve_fit
+        pr = self.lane_profile(b.lane)
+        sel = (pr["y"] >= b.y0 - 2) & (pr["y"] <= b.y1 + 2)
+        yy, cc = pr["y"][sel], pr["corr"][sel]
+        if len(yy) < 12 or pr["sat"][sel].sum() > 0:     # clipped flat top looks like two peaks
+            return [b]
+        d2 = -ndimage.gaussian_filter1d(cc, 2.0, order=2)
+        noise_d2 = 1.4826 * np.median(np.abs(-ndimage.gaussian_filter1d(pr["corr"], 2.0, order=2))) + 1e-9
+        pk, _ = signal.find_peaks(d2, prominence=SHOULDER_D2_SNR * noise_d2, distance=4)
+        if len(pk) < 2:
+            return [b]
+        pk = sorted(pk, key=lambda i: -d2[i])[:2]
+        g1 = lambda y, a, m, s_: a * np.exp(-0.5 * ((y - m) / s_) ** 2)  # noqa: E731
+        g2 = lambda y, a1, m1, s1, a2, m2, s2: g1(y, a1, m1, s1) + g1(y, a2, m2, s2)  # noqa: E731
+        amax, w = float(cc.max()), max(1.0, (b.y1 - b.y0) / 4)
+        try:
+            with np.errstate(all="ignore"):
+                p1, _ = curve_fit(g1, yy, cc, p0=[amax, b.y, w], maxfev=3000)
+                ya, yb = sorted(float(yy[i]) for i in pk)
+                p2, _ = curve_fit(g2, yy, cc, p0=[amax, ya, w / 2, amax / 2, yb, w / 2],
+                                  bounds=([0, yy[0], 0.5, 0, yy[0], 0.5], [3 * amax, yy[-1], len(yy), 3 * amax,
+                                                                           yy[-1], len(yy)]), maxfev=4000)
+        except (RuntimeError, ValueError):
+            return [b]
+        rss1 = float(((cc - g1(yy, *p1)) ** 2).sum())
+        rss2 = float(((cc - g2(yy, *p2)) ** 2).sum())
+        a1, m1, s1, a2, m2, s2 = p2
+        if m1 > m2:
+            a1, m1, s1, a2, m2, s2 = a2, m2, s2, a1, m1, s1
+        areas = (a1 * s1, a2 * s2)
+        sep_ok = (m2 - m1) >= 1.2 * (s1 + s2) / 2 and (m2 - m1) >= self.params.min_band_distance
+        if not (rss2 < 0.4 * rss1 and sep_ok and min(areas) >= SHOULDER_MIN_SHARE * max(areas)):
+            return [b]
+        # boundary where the two fitted components are equal
+        yy_f = np.linspace(m1, m2, 200)
+        cut = float(yy_f[np.argmin(np.abs(g1(yy_f, a1, m1, s1) - g1(yy_f, a2, m2, s2)))])
+        return [Band(b.lane, float(m1), b.y0, float(np.floor(cut)), b.source),
+                Band(b.lane, float(m2), float(np.floor(cut)) + 1, b.y1, b.source)]
 
     def _peak_height(self, b: Band) -> float:
         """Smoothed background-corrected profile value at the band's peak row."""
@@ -630,6 +844,9 @@ class GelAnalysis:
         """Fraction of the lane's columns that carry the band (bands span the lane, dust does not)."""
         pr = self.lane_profile(b.lane)
         c0, c1 = pr["cols"]
+        o = int(round(self.lanes[b.lane].dx(b.y)))
+        W = self.data.shape[1]
+        c0, c1 = max(0, c0 + o), min(W, c1 + o)
         y0, y1 = int(b.y0), int(b.y1) + 1
         block = self.data[y0:y1, c0:c1].sum(0, dtype=np.float64)
         sel = (pr["y"] >= y0) & (pr["y"] < y1)
@@ -765,8 +982,9 @@ class GelAnalysis:
         warn = [w for c in self.calibrations for w in c.warnings]
         self._log("calibrate", {"marker_lanes": p.marker_lanes},
                   ("; ".join(warn) if warn else "ok") +
-                  (f"; mass fit slope {self.mass_fit['slope']:.4g} vol/{self.mass_fit['unit']}, "
-                   f"R²={self.mass_fit['r2']:.3f}, n={self.mass_fit['n']}" if self.mass_fit else ""))
+                  (f"; mass curve ({self.mass_fit['model']}): typical error "
+                   f"{self.mass_fit['typical_error']:.0%} (leave-one-out), R²={self.mass_fit['r2']:.3f}, "
+                   f"n={self.mass_fit['n']}" if self.mass_fit else ""))
         return self.calibrations
 
     def mass_scale(self) -> float:
@@ -781,28 +999,67 @@ class GelAnalysis:
         return 1.0
 
     def _fit_mass(self):
-        xs, ys = [], []
+        """Mass standard curve from the unsaturated ladder bands.
+
+        ``size`` model (default): log10(volume / ng) as a smooth function (polynomial in log size,
+        degree 1-3 by the number of distinct sizes) - on real gels the signal per ng peaks at
+        1.5-3 kb and drops to ~20 % at 100 bp, so one slope mis-estimates small fragments 3-5x.
+        ``linear``: volume = slope x ng through the origin.
+        The leave-one-out error (typical factor between estimated and datasheet mass) is reported."""
+        xs, ys, ss = [], [], []
         k = self.mass_scale()
         sat = self._saturated()
         for c in self.calibrations:
             if not c.masses:
                 continue
-            for y, m, v in zip(c.ys, c.masses, c.volumes):
+            for y, m, v, sz in zip(c.ys, c.masses, c.volumes, c.sizes):
                 b = next(bb for bb in self.bands if bb.lane == c.lane and bb.y == y)
-                if not sat[self.bands.index(b)]:
+                if not sat[self.bands.index(b)] and m > 0 and v > 0:
                     xs.append(m * k)
                     ys.append(v)
+                    ss.append(sz)
         if len(xs) < 3:
             return
-        x, y = np.asarray(xs, float), np.asarray(ys, float)
+        x, y, ls = np.asarray(xs, float), np.asarray(ys, float), np.log10(np.asarray(ss, float))
         slope = float((x * y).sum() / (x * x).sum())          # through origin
-        pred = slope * x
+        n_sizes = len(np.unique(np.round(ls, 3)))
+        model = self.params.mass_model if n_sizes >= 4 else "linear"
+        deg = 3 if n_sizes >= 8 else 2 if n_sizes >= 5 else 1
+
+        def fit(xx, yy, ll):
+            if model == "size":
+                cf = np.polyfit(ll, np.log10(yy / xx), deg)
+                return lambda l_: 10 ** np.polyval(cf, np.clip(l_, ls.min(), ls.max())), cf
+            sl = float((xx * yy).sum() / (xx * xx).sum())
+            return lambda l_: np.full_like(np.asarray(l_, float), sl), None
+        resp, coef = fit(x, y, ls)
+        pred = x * resp(ls)
         ss_res = float(((y - pred) ** 2).sum())
         ss_tot = float(((y - y.mean()) ** 2).sum()) or 1.0
+        loo = []
+        for i in range(len(x)):
+            keep = np.arange(len(x)) != i
+            if keep.sum() >= deg + 2:
+                r_i, _ = fit(x[keep], y[keep], ls[keep])
+                loo.append(np.log10(y[i] / r_i(ls[i]) / x[i]))
+        err = float(10 ** np.sqrt(np.mean(np.square(loo))) - 1) if loo else float("nan")
         unit = PRESETS.get(self.params.marker_preset or "", {}).get("mass_unit", "ng")
-        self.mass_fit = {"slope": slope, "load_scale": k, "r2": 1 - ss_res / ss_tot, "n": len(xs),
+        self.mass_fit = {"model": model, "slope": slope, "coef": None if coef is None else [float(c) for c in coef],
+                         "log_size_range": [float(ls.min()), float(ls.max())],
+                         "load_scale": k, "r2": 1 - ss_res / ss_tot, "typical_error": err, "n": len(xs),
                          "min": float(x.min()), "max": float(x.max()), "unit": unit,
-                         "points": list(zip(xs, ys))}
+                         "points": [[float(a), float(b_), float(c)] for a, b_, c in zip(xs, ys, ss)]}
+
+    def mass_for(self, volume: float, size: float) -> tuple[float, bool]:
+        """Estimated mass of a band (needs :meth:`calibrate`). Returns (mass, size_corrected)."""
+        mf = self.mass_fit
+        if not mf:
+            return float("nan"), False
+        if mf["model"] == "size" and mf["coef"] and np.isfinite(size) and size > 0:
+            lo, hi = mf["log_size_range"]
+            r = 10 ** np.polyval(mf["coef"], np.clip(np.log10(size), lo, hi))
+            return float(volume / r), True
+        return float(volume / mf["slope"]), False
 
     def _size_for(self, lane: int, y: float) -> tuple[float, bool]:
         gel = (self.lanes[lane].tier, self.lanes[lane].column)
@@ -829,12 +1086,81 @@ class GelAnalysis:
 
     # --------------------------------------------------------- quantification
     def _volumes(self) -> list[float]:
-        out = []
+        return self._volumes_info()[0]
+
+    def _volumes_info(self) -> tuple[list[float], list[bool]]:
+        """Background-corrected volume per band, and whether it came from peak fitting."""
+        vols, fitted = [], []
         for b in self.bands:
             pr = self.lane_profile(b.lane)
             sel = (pr["y"] >= b.y0) & (pr["y"] <= b.y1)
-            out.append(float(pr["corr"][sel].sum()))
-        return out
+            vols.append(float(pr["corr"][sel].sum()))
+            fitted.append(False)
+        if self.params.deconvolve:
+            for group in self._overlap_groups():
+                split = self._deconvolve(group)
+                if split is not None:
+                    for k, v in zip(group, split):
+                        vols[k], fitted[k] = v, True
+        return vols, fitted
+
+    def _overlap_groups(self) -> list[list[int]]:
+        """Runs of automatic bands in a lane whose integration ranges touch (split at a valley)."""
+        groups, cur = [], []
+        order = sorted(range(len(self.bands)), key=lambda k: (self.bands[k].lane, self.bands[k].y))
+        for k in order:
+            b = self.bands[k]
+            prev = self.bands[cur[-1]] if cur else None
+            touching = prev is not None and prev.lane == b.lane and b.y0 <= prev.y1 + 1.5
+            if touching and b.source == "auto" and prev.source == "auto":
+                cur.append(k)
+            else:
+                if len(cur) > 1:
+                    groups.append(cur)
+                cur = [k] if b.source == "auto" else []
+        if len(cur) > 1:
+            groups.append(cur)
+        return groups
+
+    def _deconvolve(self, group: list[int]) -> list[float] | None:
+        """Fit one Gaussian per band over the shared range; return the shared signal split by the
+        fitted areas, or None if the fit is poor (then the valley split is kept)."""
+        from scipy.optimize import curve_fit
+        bands = [self.bands[k] for k in group]
+        pr = self.lane_profile(bands[0].lane)
+        y0, y1 = bands[0].y0, bands[-1].y1
+        sel = (pr["y"] >= y0) & (pr["y"] <= y1)
+        yy, cc = pr["y"][sel], pr["corr"][sel]
+        n = len(bands)
+        if len(yy) < 3 * n + 2 or cc.sum() <= 0:
+            return None
+
+        def model(y, *p):
+            out = np.zeros_like(y, dtype=float)
+            for j in range(n):
+                a, mu, sg = p[3 * j: 3 * j + 3]
+                out += a * np.exp(-0.5 * ((y - mu) / sg) ** 2)
+            return out
+        p0, lo, hi = [], [], []
+        for b in bands:
+            w = max(1.0, (b.y1 - b.y0) / 4)
+            a0 = max(float(np.interp(b.y, yy, cc)), 1e-9)
+            p0 += [a0, b.y, w]
+            lo += [0.0, b.y - 3, 0.5]
+            hi += [a0 * 3 + 1e-9, b.y + 3, max(2.0, (y1 - y0) / 2)]
+        try:
+            with np.errstate(all="ignore"):
+                p, _ = curve_fit(model, yy, cc, p0=p0, bounds=(lo, hi), maxfev=4000)
+        except (RuntimeError, ValueError):
+            return None
+        res = cc - model(yy, *p)
+        r2 = 1 - float((res ** 2).sum()) / (float(((cc - cc.mean()) ** 2).sum()) or 1.0)
+        if not np.isfinite(r2) or r2 < 0.9:
+            return None
+        areas = np.array([p[3 * j] * p[3 * j + 2] for j in range(n)])
+        if areas.sum() <= 0:
+            return None
+        return list(float(cc.sum()) * areas / areas.sum())
 
     def _saturated(self) -> list[int]:
         out = []
@@ -847,7 +1173,7 @@ class GelAnalysis:
     def quantify(self) -> pd.DataFrame:
         if self.params.marker_lanes and self.params.marker_sizes:
             self.calibrate()
-        vols = self._volumes()
+        vols, fitted = self._volumes_info()
         sats = self._saturated()
         marker_idx = {L - 1 for L in self.params.marker_lanes}
         rows = []
@@ -860,7 +1186,7 @@ class GelAnalysis:
             well = lane.y0 + 10
             return (b.y - well) / max(1.0, lane.y1 - well)
         unit = self.params.marker_unit
-        for b, v, s in zip(self.bands, vols, sats):
+        for b, v, s, fit in zip(self.bands, vols, sats, fitted):
             cnt[b.lane] = cnt.get(b.lane, 0) + 1
             pr = self.lane_profile(b.lane)
             sel = (pr["y"] >= b.y0) & (pr["y"] <= b.y1)
@@ -877,6 +1203,7 @@ class GelAnalysis:
                 "size_in_range": (bool(self.size_range()[0] <= size <= self.size_range()[1]) and not ext)
                 if np.isfinite(size) else None,
                 "volume": round(v, 1),
+                "deconvolved": fit,
                 "raw_volume": round(float(pr["raw"][sel].sum()), 1),
                 "background": round(float(pr["baseline"][sel].sum()), 1),
                 "peak_height": round(float(pr["corr"][sel].max()) if sel.any() else 0.0, 1),
@@ -885,8 +1212,9 @@ class GelAnalysis:
                 "lane_coverage": round(self.coverage(b), 2), "source": b.source,
             }
             if self.mass_fit:
-                m = v / self.mass_fit["slope"]
+                m, corrected = self.mass_for(v, size)
                 r[f"est_mass_{self.mass_fit['unit']}"] = round(m, 2)
+                r["mass_size_corrected"] = corrected
                 r["mass_out_of_range"] = not (self.mass_fit["min"] <= m <= self.mass_fit["max"])
                 vol_ul = self.params.sample_loads_ul.get(str(b.lane + 1))
                 if vol_ul:
@@ -943,7 +1271,7 @@ class GelAnalysis:
         ga = cls(image_path or d["image"], params, orientation=d["orientation"])
         ga.log = d.get("log", []) + ga.log[-1:]
         ga.well_y = d.get("well_y", 0.0)
-        ga.lanes = [Lane(**l) for l in d["lanes"]]
+        ga.lanes = [Lane(**l) for l in d["lanes"]]          # older sessions: no "bend" -> straight
         ga.bands = [Band(**b) for b in d["bands"]]
         ga._log("load_session", {"session": os.path.abspath(path)},
                 f"{len(ga.lanes)} lanes, {len(ga.bands)} bands restored")

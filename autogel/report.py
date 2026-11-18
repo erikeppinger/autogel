@@ -56,6 +56,8 @@ def describe(e: dict) -> str:
                 f"radius {_n(p.get('bg_radius'))} px, min S/N {p.get('min_snr')}]")
     if s == "set_bands":
         return f"Bands edited ({p.get('reason', '')}): {r}"
+    if s == "suggest_ladder":
+        return (f"Ladder suggestion for lane {p.get('lane')}: {', '.join(p.get('ranking', []))}; {r}")
     if s == "set_marker":
         load = f", ladder loaded {p['load']} µg" if p.get("load") else ""
         return (f"Marker: {p.get('preset')} in lane(s) {', '.join(map(str, p.get('lanes', [])))}"
@@ -181,9 +183,11 @@ def write_report_md(ga, df, path: str, files: list[str] | None = None):
     ], ["Parameter", "Value"]))
     if ga.mass_fit:
         mf = ga.mass_fit
-        L.append(f"\nMass curve: volume = {mf['slope']:.4g} × {mf['unit']} (through origin), "
-                 f"R² = {mf['r2']:.3f}, n = {mf['n']} unsaturated ladder bands, "
-                 f"range {mf['min']:.0f}–{mf['max']:.0f} {mf['unit']}.\n")
+        how = ("signal per ng as a function of fragment size, fitted on the ladder"
+               if mf.get("model") == "size" else f"volume = {mf['slope']:.4g} × {mf['unit']} (through origin)")
+        L.append(f"\nMass curve: {how}; typical error of a ladder band left out of the fit "
+                 f"±{mf.get('typical_error', float('nan')):.0%}, R² = {mf['r2']:.3f}, n = {mf['n']} "
+                 f"unsaturated ladder bands, range {mf['min']:.0f}–{mf['max']:.0f} {mf['unit']}.\n")
 
     L.append("\n## Steps\n")
     rows = []
