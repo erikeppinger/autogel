@@ -13,6 +13,7 @@ import pandas as pd  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 
 from .analysis import GelAnalysis  # noqa: E402
+from .compare import group_matrix  # noqa: E402
 from .labels import declutter, plan_labels  # noqa: E402
 from .report import describe, write_jsonl, write_report_md  # noqa: E402
 
@@ -129,6 +130,10 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
     ga._log("export", {"out_dir": os.path.abspath(out_dir)})
 
     df.to_csv(os.path.join(out_dir, f"{stem}_bands.csv"), index=False)
+    best = "fold_change" if "fold_change" in df else "normalised" if "normalised" in df else "volume"
+    m = group_matrix(df, best)
+    if len(m):
+        m.to_csv(os.path.join(out_dir, f"{stem}_compare_{best}.csv"), index=False)
     lanes.to_csv(os.path.join(out_dir, f"{stem}_lanes.csv"), index=False)
     prof.to_csv(os.path.join(out_dir, f"{stem}_profiles.csv"), index=False)
     cal_rows = []
@@ -148,6 +153,11 @@ def export_all(ga: GelAnalysis, out_dir: str | None = None) -> str:
         if ga.mass_fit:
             pd.DataFrame([{k: v for k, v in ga.mass_fit.items() if k != "points"}]).to_excel(
                 xw, sheet_name="mass_fit", index=False)
+        # band groups x lanes: the same band compared across lanes
+        for value in ("volume", "normalised", "fold_change"):
+            m = group_matrix(df, value)
+            if len(m):
+                m.to_excel(xw, sheet_name=f"compare_{value}"[:31], index=False)
         log.to_excel(xw, sheet_name="log", index=False)
 
     with PdfPages(os.path.join(out_dir, f"{stem}_profiles.pdf")) as pdf:

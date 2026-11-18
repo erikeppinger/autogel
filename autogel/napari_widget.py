@@ -58,6 +58,7 @@ PALETTES = {
 }
 DEFAULT_PALETTE = "colour-blind safe (Okabe-Ito)"
 MASS_MODELS = {"size-dependent": "size", "one slope through origin": "linear"}
+NORM_METHODS = {"none": "none", "loading-control band": "loading_control", "total lane signal": "total_lane"}
 
 
 # the profile dock can be collapsed to ~0 px height; matplotlib then warns on every redraw
@@ -296,6 +297,19 @@ class AutogelWidget(QWidget):
         self.lbl_warn.setWordWrap(True)
         self.lbl_warn.setStyleSheet("color: orange")
         f.addWidget(self.lbl_warn)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("channel"))
+        self.cb_channel = QComboBox()
+        self.cb_channel.setToolTip("Which image is analysed: colour channels, pages of a multi-page TIFF, "
+                                   "added images, or 'all channels' to detect the bands of every colour.")
+        self.cb_channel.currentIndexChanged.connect(self._channel_changed)
+        row.addWidget(self.cb_channel, 1)
+        b = QPushButton("Add image…")
+        b.setToolTip("Add another image of the same gel/membrane (same camera position), e.g. the "
+                     "white-light photo showing a prestained marker, or a total-protein stain.")
+        b.clicked.connect(self._add_image_dialog)
+        row.addWidget(b)
+        f.addLayout(row)
         # rotate / flip stay visible in Easy mode: a wrong automatic orientation must be fixable
         row = QHBoxLayout()
         for txt, fn, tip in (("Rotate 90°", self._rot90, "Lanes must run top to bottom"),
@@ -481,6 +495,11 @@ class AutogelWidget(QWidget):
         self.ed_marker_lanes = QLineEdit()
         self.ed_marker_lanes.setPlaceholderText("e.g. 1, 20")
         f.addRow("marker lane(s)", self.ed_marker_lanes)
+        self.cb_marker_ch = QComboBox()
+        self.cb_marker_ch.setToolTip("Read the marker lanes from another image, e.g. the white-light photo of a "
+                                     "Western blot (the chemiluminescence image usually doesn't show the marker).")
+        self.cb_marker_ch.currentIndexChanged.connect(self._marker_channel_changed)
+        f.addRow("marker lanes from", self.cb_marker_ch)
         self.sp_load = QDoubleSpinBox()
         self.sp_load.setRange(0, 1e6)
         self.sp_load.setDecimals(3)
@@ -517,6 +536,47 @@ class AutogelWidget(QWidget):
         self._preset_changed(DEFAULT_PRESET)
 
         # --- display
+        g = QGroupBox("Compare lanes")
+        f = QFormLayout(g)
+        self.cb_norm = QComboBox()
+        self.cb_norm.addItems(list(NORM_METHODS))
+        self.cb_norm.setToolTip("Western blots: divide each band by the lane's loading-control band (e.g. actin) "
+                                "or by the lane's total signal (total-protein / stain-free image).")
+        f.addRow("normalise to", self.cb_norm)
+        self.sp_lc = QDoubleSpinBox()
+        self.sp_lc.setRange(0, 1e7)
+        self.sp_lc.setDecimals(1)
+        self.sp_lc.setSpecialValueText("–")
+        self.sp_lc.setToolTip("Size of the loading-control band in the marker unit, e.g. 42 (kDa, actin)")
+        f.addRow("loading-control size", self.sp_lc)
+        self.sp_lc_tol = QDoubleSpinBox()
+        self.sp_lc_tol.setRange(0.01, 0.5)
+        self.sp_lc_tol.setSingleStep(0.01)
+        self.sp_lc_tol.setValue(Params.lc_tol)
+        f.addRow("  size tolerance", self.sp_lc_tol)
+        self.cb_lc_ch = QComboBox()
+        self.cb_lc_ch.setToolTip("Two-colour blots / separate total-protein image: where to read the loading control")
+        f.addRow("  loading control from", self.cb_lc_ch)
+        self.cb_tgt_ch = QComboBox()
+        self.cb_tgt_ch.setToolTip("Two-colour blots: where to measure the bands that are normalised")
+        f.addRow("  bands measured in", self.cb_tgt_ch)
+        self.sp_ref_lane = QSpinBox()
+        self.sp_ref_lane.setRange(0, 999)
+        self.sp_ref_lane.setSpecialValueText("none")
+        self.sp_ref_lane.setToolTip("Fold change relative to this lane (e.g. the untreated control)")
+        f.addRow("reference lane", self.sp_ref_lane)
+        self.chk_rna = QCheckBox("RNA integrity (28S/18S, degradation)")
+        self.chk_rna.setToolTip("Total RNA: 28S/18S ratio and the share of signal below 18S, per lane")
+        f.addRow(self.chk_rna)
+        for w in (self.sp_lc_tol, self.cb_lc_ch, self.cb_tgt_ch):
+            self._expert_items.append((f, w))
+        for w in (self.cb_norm, self.cb_lc_ch, self.cb_tgt_ch):
+            w.currentIndexChanged.connect(self._compare_changed)
+        for w in (self.sp_lc, self.sp_lc_tol, self.sp_ref_lane):
+            w.valueChanged.connect(self._compare_changed)
+        self.chk_rna.toggled.connect(self._compare_changed)
+        lay.addWidget(g)
+
         g = QGroupBox("Display")
         f = QFormLayout(g)
         self.cb_palette = QComboBox()
@@ -699,6 +759,7 @@ class AutogelWidget(QWidget):
             for name in ("gel", "saturated", "highlight", "gel splits", "lanes", "bands", "sizes left", "sizes right"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
+            self._fill_channel_combos()
             a = ga.data
             lo, hi = np.percentile(a, [0.5, 99.7])
             self.viewer.add_image(a, name="gel", colormap="gray", contrast_limits=(lo, hi))
@@ -761,6 +822,18 @@ class AutogelWidget(QWidget):
         self.sp_cov.setValue(p.min_coverage)
         self.sp_gelrel.setValue(p.min_gel_rel)
         self.chk_floor.setChecked(p.noise_floor)
+        for w, v in ((self.sp_lc, p.lc_size or 0), (self.sp_lc_tol, p.lc_tol),
+                     (self.sp_ref_lane, p.reference_lane or 0)):
+            w.blockSignals(True)
+            w.setValue(v)
+            w.blockSignals(False)
+        self.cb_norm.blockSignals(True)
+        self.cb_norm.setCurrentText({v: k for k, v in NORM_METHODS.items()}.get(p.norm_method, "none"))
+        self.cb_norm.blockSignals(False)
+        self.chk_rna.blockSignals(True)
+        self.chk_rna.setChecked(p.rna_integrity)
+        self.chk_rna.blockSignals(False)
+        self._fill_channel_combos()
         self.chk_curved.setChecked(p.curved_lanes)
         self.chk_deconv.setChecked(p.deconvolve)
         self.chk_shoulder.setChecked(p.split_shoulders)
@@ -1284,7 +1357,99 @@ class AutogelWidget(QWidget):
         self.ga.params.sample_loads_ul = loads
         self.ga.params.mass_model = MASS_MODELS[self.cb_mass.currentText()]
         self.ga.params.deconvolve = self.chk_deconv.isChecked()
+        self._apply_compare()
         return True
+
+    # ------------------------------------------------------------ channels / compare
+    def _fill_channel_combos(self):
+        """(Re)fill the channel choices from the analysis; keeps the current selections."""
+        names = self.ga.channel_names() if self.ga else ["grey"]
+        multi = self.ga is not None and len(self.ga.gel.channels) > 1
+        p = self.ga.params if self.ga else Params()
+        entries = [("default image", None)]
+        if multi:
+            entries += [(f"{k + 1}: {n}", k) for k, n in enumerate(names)] + [("all channels", -1)]
+        same = [("same image", None)] + ([(f"{k + 1}: {n}", k) for k, n in enumerate(names)] if multi else [])
+        for cb, items, cur in ((self.cb_channel, entries, p.channel), (self.cb_marker_ch, same, p.marker_channel),
+                               (self.cb_lc_ch, same, p.lc_channel), (self.cb_tgt_ch, same, p.target_channel)):
+            cb.blockSignals(True)
+            cb.clear()
+            for label, data in items:
+                cb.addItem(label, data)
+            idx = next((i for i in range(cb.count()) if cb.itemData(i) == cur), 0)
+            cb.setCurrentIndex(idx)
+            cb.setEnabled(cb.count() > 1)
+            cb.blockSignals(False)
+
+    def _show_image(self):
+        if self.ga is None or "gel" not in self.viewer.layers:
+            return
+        a = self.ga.data
+        lo, hi = np.percentile(a, [0.5, 99.7])
+        layer = self.viewer.layers["gel"]
+        layer.data = a
+        layer.contrast_limits = (float(lo), float(max(hi, lo + 1e-6)))
+        if "saturated" in self.viewer.layers:
+            self.viewer.layers["saturated"].data = self.ga.gel.raw_max.astype(np.float32)
+
+    def _channel_changed(self, _=None):
+        if self.ga is None:
+            return
+        ch = self.cb_channel.currentData()
+        if ch == self.ga.params.channel:
+            return
+        with self._busy("Switching channel"):
+            self.ga.set_channel(ch)
+            self._show_image()
+        if self.ga.bands:
+            self.quantify(silent=True)
+
+    def _add_image_dialog(self):
+        if not self._need():
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Add image of the same gel / membrane", "",
+                                              "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All (*)")
+        if not path:
+            return
+        try:
+            with self._busy(f"Adding {os.path.basename(path)}"):
+                k = self.ga.add_image(path)
+        except Exception as e:
+            QMessageBox.warning(self, "autogel", str(e))
+            return
+        self._fill_channel_combos()
+        self._info(f"added as channel {k + 1}. If it shows the marker, choose it under 'marker lanes from'.")
+
+    def _marker_channel_changed(self, _=None):
+        if self.ga is None:
+            return
+        ch = self.cb_marker_ch.currentData()
+        if ch == self.ga.params.marker_channel:
+            return
+        with contextlib.suppress(ValueError):       # unreadable input is reported by quantify
+            self._apply_marker()
+        with self._busy("Reading the marker lanes from the chosen image"):
+            self.ga.set_marker_channel(ch)
+        self._refresh_layers()
+        if self.ga.params.marker_lanes:
+            self.quantify(silent=True)
+
+    def _apply_compare(self):
+        if self.ga is None:
+            return
+        p = self.ga.params
+        p.norm_method = NORM_METHODS[self.cb_norm.currentText()]
+        p.lc_size = self.sp_lc.value() or None
+        p.lc_tol = self.sp_lc_tol.value()
+        p.lc_channel = self.cb_lc_ch.currentData()
+        p.target_channel = self.cb_tgt_ch.currentData()
+        p.reference_lane = self.sp_ref_lane.value() or None
+        p.rna_integrity = self.chk_rna.isChecked()
+
+    def _compare_changed(self, _=None):
+        if self.ga is None or not self.ga.bands:
+            return
+        self.quantify(silent=True)
 
     def quantify(self, silent=False):
         if not self._need():
@@ -1304,6 +1469,12 @@ class AutogelWidget(QWidget):
             how = "size-dependent" if mf["model"] == "size" else "through origin"
             msg.append(f"mass curve ({how}): typical error ±{mf['typical_error']:.0%} "
                        f"(leave-one-out), n={mf['n']} ladder bands")
+        msg += getattr(self.ga, "compare_warnings", [])
+        rna = getattr(self.ga, "rna", None)
+        if rna is not None and len(rna):
+            msg.append("RNA 28S/18S: " + ", ".join(
+                f"{r.lane_name}: {r.rna_28s_18s:.2f} ({r.rna_below_18s_pct:.0f} % below 18S)"
+                for r in rna.itertuples() if r.rna_28s_18s == r.rna_28s_18s))
         self.lbl_cal.setText("\n".join(msg))
         self._fill_table()
         self._refresh_layers()

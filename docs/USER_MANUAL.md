@@ -290,6 +290,9 @@ Built-in ladders, as of 2026-11-18:
 | NEB 1 kb (N3232), NEB 100 bp (N3231) | ng per 0.5 µg | ✔ |
 | GeneRuler 1 kb Plus (SM1331), 1 kb (SM0311), DNA Ladder Mix (SM0331) | ng per 0.5 µg | ✔ |
 | PageRuler Prestained (26616), Plus Prestained (26619), Unstained (26614) | – | ✔ sizes |
+| NEB ssRNA Ladder (N0362), Low Range ssRNA Ladder (N0364), RiboRuler Low Range RNA Ladder (SM1831) — unit nt | – | ✔ sizes |
+| NEB Lambda PFG Ladder (N0341), pulsed-field gels | – | ✔ sizes |
+| NativeMark Unstained Protein Standard (LC0725), native protein gels | – | ✔ sizes |
 | GeneRuler 100 bp Plus (SM0321), 100 bp (SM0241), Bio-Rad Precision Plus Dual Color (1610374) | – | ⚠ count/range only |
 | 67 more DNA ladders imported from ApE (NEB, Invitrogen, Promega, Sigma, …) | – | ⚠ sizes only |
 
@@ -321,13 +324,61 @@ the program.
 > `autogel/ladders.json` have not yet been checked. Lots can change, so compare with the
 > datasheet of your lot.
 
-### 3.5 Display
+### 3.5 Several images, Western blots, RNA gels
+
+**Channels and added images** (section *Image*, both modes)
+- A colour image is analysed as the mean of red/green/blue, and a multi-page TIFF as page 1, as
+  before. Under **channel** you can choose a single colour or page instead, or **all
+  channels**: every channel is scaled to its own brightness and combined, so the bands of every
+  colour are found (e.g. two-colour fluorescent blots).
+- **Add image…** adds another picture of the *same* gel or membrane, taken from the same camera
+  position without cropping, e.g.:
+  - the **white-light photo** of a Western blot, which shows the prestained marker that the
+    chemiluminescence image doesn't
+  - a total-protein stain (stain-free, Ponceau) for normalisation
+  autogel applies the gel's orientation to it and recognises dark-on-light images itself.
+- **marker lanes from** (section *Marker*): read the marker lanes from that image. Their bands
+  are detected there; everything else stays on the analysed image.
+- With several channels, the band table gets one volume column per channel (`volume_red`,
+  `volume_page_2`, `volume_<image name>`, …).
+
+**Comparing lanes** (section *Compare lanes*)
+- **Band groups:** the same band in different lanes gets the same `band_group` number (1 = top),
+  matched by size (within 4 %) when the gel is calibrated, otherwise by relative migration. The
+  export contains a table *band groups × lanes* (`*_compare_*.csv` and `compare_*` sheets).
+- **normalise to** (Western blots):
+  - *loading-control band*: enter its **size** (e.g. `42` for actin in kDa). In every lane the
+    strongest band within ±10 % of that size is the loading control (`is_loading_control`), and
+    every band is divided by it (`normalised`).
+  - *total lane signal*: divide by the lane's whole signal, e.g. from an added total-protein
+    image chosen under *loading control from* (Expert).
+  - **reference lane**: `fold_change` = normalised value ÷ the same band group's value in that
+    lane (e.g. the untreated control).
+  - Two-colour blots (Expert): *loading control from* = the channel with the loading control,
+    *bands measured in* = the channel with the target; detect bands on *all channels*.
+- **RNA integrity:** per lane the 28S/18S volume ratio and the share of the signal below 18S.
+  - With an RNA ladder (unit nt), 28S and 18S are found by size (3.2–6 kb and 1.5–2.3 kb);
+    otherwise the two strongest bands are taken.
+  - Intact mammalian total RNA typically shows a ratio around 2 and little signal below 18S;
+    degraded RNA a lower ratio and a smear towards small sizes.
+  - The smear is measured against the background *beside* the lane, because the rolling-ball
+    background would remove it. These numbers are a guide, not a RIN.
+  - Results: the line under *Calibrate & quantify* and the lanes table (`rna_28s_18s`,
+    `rna_below_18s_pct`).
+
+On simulated gels:
+- **Western blot** (chemiluminescence image plus a separate marker photo; target amounts 0.5–4×
+  with uneven loading): sizes within 3 %, and fold changes within 6 % of the truth.
+- **RNA:** the 28S/18S ratio comes out as 1.92 (true 2.0), and the degradation smear gives 85 %
+  below 18S versus 1 % for intact RNA.
+
+### 3.6 Display
 - **colours**: *colour-blind safe (Okabe-Ito)* is the default. *classic* uses cyan, lime, gold
   and red.
 - **label all bands**: by default, sizes are shown only for the marker lanes and the selected
   lane, so labels don't overlap.
 
-### 3.6 Results and export
+### 3.7 Results and export
 - The table updates after every change. Saturated bands are shown in red.
 - **Export…** writes the following to a folder of your choice:
 
@@ -432,6 +483,9 @@ Options of `run`:
 | `saturated`, `saturated_px` | band contains clipped pixels. The volume is too low |
 | `lane_coverage` | fraction of the lane width the band covers. Low values suggest dust |
 | `deconvolved` | True if the band touched a neighbour and its volume comes from the peak fit (see 3.3) |
+| `volume_<channel>` | with several channels/images: the band's volume in each of them |
+| `band_group`, `group_size` | the same band across lanes (see 3.5) |
+| `is_loading_control`, `lc_signal`, `normalised`, `fold_change` | Western-blot normalisation (see 3.5) |
 | `est_mass_ng`, `mass_out_of_range` | from the ladder mass curve. *Out of range* = outside the ladder masses |
 | `mass_size_corrected` | True if the size-dependent response at this band's size was used (False: size unknown, average response) |
 | `conc_ng_per_ul` | `est_mass_ng / µl loaded` |

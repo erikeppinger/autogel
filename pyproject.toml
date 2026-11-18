@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autogel"
-version = "0.4.1"
+version = "0.5.0.dev0"
 description = "Automatic lane/band detection and quantification for agarose and SDS gels, with a napari editor"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]

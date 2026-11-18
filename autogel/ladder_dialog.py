@@ -57,7 +57,7 @@ class LadderDialog(QDialog):
         f = QFormLayout()
         self.ed_name, self.ed_vendor, self.ed_catalog = QLineEdit(), QLineEdit(), QLineEdit()
         self.cb_unit = QComboBox()
-        self.cb_unit.addItems(["bp", "kDa"])
+        self.cb_unit.addItems(list(markers.UNITS))
         self.ed_sizes = QLineEdit()
         self.ed_sizes.setPlaceholderText("e.g. 10000, 8000, 6000 … (any order, pasted from the datasheet)")
         self.ed_masses = QLineEdit()

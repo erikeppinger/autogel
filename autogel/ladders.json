@@ -138,6 +138,55 @@
    "note": "Product page confirms 10 proteins, 10-250 kD, pink reference bands at 25 and 75 kD; the individual sizes are not yet checked against the datasheet.",
    "source": "https://www.bio-rad.com/en-us/sku/1610374-precision-plus-protein-dual-color-standards-500-ul",
    "verified": false
+  },
+  {
+   "name": "NEB ssRNA Ladder (N0362)",
+   "vendor": "New England Biolabs", "catalog": "N0362", "unit": "nt",
+   "sizes": [9000, 7000, 5000, 3000, 2000, 1000, 500],
+   "masses": null,
+   "relative_intensity": [1, 1, 1, 2, 1, 1, 1],
+   "reference_bands": [3000],
+   "note": "RNA, denaturing or native agarose gels. The 3000 nt band is at double intensity (reference). Not designed for mass quantification.",
+   "source": "https://www.neb.com/en/products/n0362-ssrna-ladder",
+   "verified": true, "checked": "2026-11-18"
+  },
+  {
+   "name": "NEB Low Range ssRNA Ladder (N0364)",
+   "vendor": "New England Biolabs", "catalog": "N0364", "unit": "nt",
+   "sizes": [1000, 500, 300, 150, 80, 50],
+   "masses": null,
+   "relative_intensity": [1, 1, 2, 1, 1, 1],
+   "reference_bands": [300],
+   "note": "RNA, denaturing PAA-urea or agarose gels. The 300 nt band is at double intensity (reference). Not designed for mass quantification.",
+   "source": "https://www.neb.com/en/products/n0364-low-range-ssrna-ladder",
+   "verified": true, "checked": "2026-11-18"
+  },
+  {
+   "name": "RiboRuler Low Range RNA Ladder (SM1831)",
+   "vendor": "Thermo Scientific", "catalog": "SM1831", "unit": "nt",
+   "sizes": [1000, 800, 600, 400, 300, 200, 100],
+   "masses": null,
+   "note": "RNA ladder for native or denaturing gels.",
+   "source": "https://www.thermofisher.com/order/catalog/product/SM1831",
+   "verified": true, "checked": "2026-11-18"
+  },
+  {
+   "name": "NEB Lambda PFG Ladder (N0341)",
+   "vendor": "New England Biolabs", "catalog": "N0341", "unit": "bp",
+   "sizes": [1018500, 970000, 921500, 873000, 824500, 776000, 727500, 679000, 630500, 582000, 533500, 485000, 436500, 388000, 339500, 291000, 242500, 194000, 145500, 97000, 48500],
+   "masses": null,
+   "note": "Pulsed-field gels: concatemers of lambda DNA (48.5 kb steps).",
+   "source": "https://www.neb.com/en/products/n0341-lambda-ladder-pfg-ladder",
+   "verified": true, "checked": "2026-11-18"
+  },
+  {
+   "name": "NativeMark Unstained Protein Standard (LC0725)",
+   "vendor": "Invitrogen / Thermo Fisher", "catalog": "LC0725", "unit": "kDa",
+   "sizes": [1236, 1048, 720, 480, 242, 146, 66, 20],
+   "masses": null,
+   "note": "Native (non-denaturing) protein gels. Migration in native gels depends on shape and charge, so sizes are estimates.",
+   "source": "https://www.thermofisher.com/order/catalog/product/LC0725",
+   "verified": true, "checked": "2026-11-18"
   }
  ]
 }

@@ -22,6 +22,7 @@ LIBRARY_URL = f"https://raw.githubusercontent.com/{REPO}/main/autogel/ladders.js
 ISSUE_URL = f"https://github.com/{REPO}/issues/new"
 MAX_LIBRARY_BYTES = 5_000_000
 _INTERNAL = ("user_defined", "library")
+UNITS = ("bp", "nt", "kDa")              # DNA base pairs, RNA nucleotides, protein kDa
 
 
 def _home() -> str:
@@ -63,8 +64,8 @@ def validate_ladder(e: dict) -> list[str]:
     name = e.get("name")
     if not isinstance(name, str) or not name.strip():
         err.append("missing name")
-    if e.get("unit") not in ("bp", "kDa"):
-        err.append(f"unit must be bp or kDa, not {e.get('unit')!r}")
+    if e.get("unit") not in UNITS:
+        err.append(f"unit must be bp, nt or kDa, not {e.get('unit')!r}")
     sizes = e.get("sizes")
     if not isinstance(sizes, list) or len(sizes) < 2 or not all(_is_num(x) and x > 0 for x in sizes):
         err.append("sizes must be a list of at least 2 positive numbers")
@@ -144,7 +145,7 @@ def save_user_ladder(name: str, sizes: list[float], unit: str = "bp",
     e = {"name": (name or "").strip(), "vendor": vendor, "catalog": catalog, "unit": unit,
          "sizes": [float(s) for s, _ in pairs],
          "masses": [float(m) for _, m in pairs] if masses else None,
-         "mass_unit": "ng" if unit == "bp" else "µg",
+         "mass_unit": "µg" if unit == "kDa" else "ng",
          "reference_load": reference_load, "source": source, "note": note, "verified": False}
     errs = validate_ladder(e)
     if errs:

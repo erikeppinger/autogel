@@ -16,7 +16,7 @@ import pandas as pd
 from scipy import ndimage, signal
 
 from . import __version__
-from .imageio import GelImage, load_gel
+from .imageio import GelImage, _combine, auto_invert, load_channels, load_gel, orient_channel
 from .markers import PRESETS, MarkerCalibration, assign_marker
 
 # shoulder splitting (Params.split_shoulders): the smaller part must carry at least this share of the
@@ -73,6 +73,21 @@ class Params:
     # mass curve: "size" = response per ng depends on fragment size (measured on the ladder:
     # small and very large fragments give less signal per ng); "linear" = one slope through origin
     mass_model: str = "size"
+    # several channels / images (colour image, multi-page TIFF, added image such as a marker photo)
+    channel: int | None = None          # analysed channel; None = default (colour mean / page 1),
+                                        # -1 = all channels combined (two-colour blots: detect both)
+    marker_channel: int | None = None   # marker lanes are read from this channel (e.g. a white-light
+                                        # photo of a blot showing the prestained ladder)
+    extra_images: list[dict] = field(default_factory=list)  # added images: {"path", "name", "invert"}
+    # comparing lanes (see compare.py)
+    group_tol: float = 0.04             # same band in two lanes: sizes within 4 % (or Rf within 0.02)
+    norm_method: str = "none"           # none | loading_control | total_lane (Western blots)
+    lc_size: float | None = None        # loading-control band size, e.g. 42 kDa (actin)
+    lc_tol: float = 0.1                 # relative size tolerance for finding it
+    lc_channel: int | None = None       # read the loading control / total signal from this channel
+    target_channel: int | None = None   # measure the bands to normalise in this channel (two-colour)
+    reference_lane: int | None = None   # 1-based lane for fold change (e.g. the untreated control)
+    rna_integrity: bool = False         # RNA gels: 28S/18S ratio and degradation per lane
     # overlapping bands (touching integration ranges): split the shared signal by fitted Gaussian
     # peak areas instead of at the valley (a faint band next to a strong one is otherwise skewed)
     deconvolve: bool = True
@@ -147,6 +162,7 @@ class GelAnalysis:
         self.listeners: list = []
         self.gel: GelImage = load_gel(path, orientation=orientation, invert=self.params.invert)
         self.path = os.path.abspath(path)
+        self._default = (self.gel.data, self.gel.raw_max)      # image analysed when no channel is chosen
         self.lanes: list[Lane] = []
         self.bands: list[Band] = []
         self.well_y: float = 0.0
@@ -158,8 +174,13 @@ class GelAnalysis:
             self.params.bg_radius = max(15.0, H / 40)
         self._log("load", {"path": self.path, "orientation": self.gel.orientation,
                            "dtype": self.gel.dtype, "shape": list(self.gel.data.shape),
-                           "saturation_level": self.gel.saturation_level},
+                           "saturation_level": self.gel.saturation_level,
+                           "channels": self.channel_names()},
                   "; ".join(self.gel.warnings) or "ok")
+        for e in self.params.extra_images:                      # replaying a session
+            self._attach_image(e)
+        if self.params.channel is not None:
+            self.set_channel(self.params.channel)
 
     # ------------------------------------------------------------------ log
     def _log(self, step: str, params: dict | None = None, result: str = ""):
@@ -173,6 +194,88 @@ class GelAnalysis:
     @property
     def data(self) -> np.ndarray:
         return self.gel.data
+
+    # ------------------------------------------------------------- channels
+    def channel_names(self) -> list[str]:
+        return list(self.gel.channel_names) or ["grey"]
+
+    def _channel_arrays(self, ch: int | None):
+        if ch is None or not self.gel.channels:
+            return self._default
+        if ch == -1:                                 # all channels: each scaled to its strong signal
+            if getattr(self, "_composite", None) is None:
+                parts = []
+                for c in self.gel.channels:
+                    lo, hi = np.percentile(c[::4, ::4], [5, 99.9])
+                    parts.append((c - lo) / max(float(hi - lo), 1e-9))
+                comp = np.max(parts, axis=0).astype(np.float32) * 10000
+                mask = np.logical_or.reduce(self.gel.channel_masks)
+                self._composite = (comp, mask)
+            return self._composite
+        return self.gel.channels[ch], self.gel.channel_masks[ch]
+
+    def set_channel(self, ch: int | None):
+        """Analyse another channel (lanes and bands are kept; profiles are re-read)."""
+        if ch is not None and not (0 <= ch < len(self.gel.channels) or (ch == -1 and len(self.gel.channels) > 1)):
+            raise ValueError(f"channel {ch} does not exist (image has {len(self.gel.channels)} channels)")
+        self.params.channel = ch
+        self.gel.data, self.gel.raw_max = self._channel_arrays(ch)
+        self._profiles = {}
+        self._log("set_channel", {"channel": ch},
+                  "default image" if ch is None else "all channels combined" if ch == -1
+                  else f"channel {ch + 1}: {self.gel.channel_names[ch]}")
+
+    def add_image(self, path: str, name: str | None = None, invert: bool | None = None) -> int:
+        """Add a second image of the same gel/membrane as an extra channel, e.g. the white-light
+        photo showing a prestained marker next to a chemiluminescence image, or a total-protein
+        stain. It must have the same size; the gel's orientation is applied to it."""
+        e = {"path": os.path.abspath(path), "name": name or os.path.splitext(os.path.basename(path))[0],
+             "invert": invert}
+        k = self._attach_image(e)
+        self.params.extra_images.append(e)
+        self._log("add_image", dict(e), f"channel {k + 1}: {self.gel.channel_names[k]}")
+        return k
+
+    def _attach_image(self, e: dict) -> int:
+        chans, names, _ = load_channels(e["path"])
+        raw, _ = _combine(chans, names)
+        if tuple(raw.shape) != tuple(self.gel.raw_shape):
+            raise ValueError(f"{os.path.basename(e['path'])} is {raw.shape[1]}x{raw.shape[0]} px but the gel image "
+                             f"is {self.gel.raw_shape[1]}x{self.gel.raw_shape[0]} px - both must come from the "
+                             "same camera position without cropping.")
+        inv = auto_invert(raw) if e.get("invert") is None else bool(e["invert"])
+        e["invert"] = inv
+        if not self.gel.channels:            # plain grey gel so far: it becomes channel 1
+            self.gel.channels.append(self._default[0])
+            self.gel.channel_masks.append(self._default[1])
+            self.gel.channel_names.append("image")
+        d, m = orient_channel(raw, self.gel.orientation, inv)
+        self.gel.channels.append(d)
+        self.gel.channel_masks.append(m)
+        self.gel.channel_names.append(e["name"])
+        self._profiles = {}
+        self._composite = None
+        return len(self.gel.channels) - 1
+
+    def set_marker_channel(self, ch: int | None):
+        """Read the marker lanes from another channel; their bands are detected there again."""
+        if ch is not None and not 0 <= ch < len(self.gel.channels):
+            raise ValueError(f"channel {ch} does not exist")
+        self.params.marker_channel = ch
+        self._profiles = {}
+        self._log("set_marker_channel", {"marker_channel": ch},
+                  "same image as the samples" if ch is None else f"channel {ch + 1}: {self.gel.channel_names[ch]}")
+        mk = [L - 1 for L in self.params.marker_lanes if 0 < L <= len(self.lanes)]
+        if mk and self.lanes:
+            self.detect_bands(lanes=mk)
+
+    def _lane_arrays(self, i: int, channel="auto"):
+        if channel != "auto":
+            return self._channel_arrays(channel)
+        mc = self.params.marker_channel
+        if mc is not None and (i + 1) in self.params.marker_lanes and mc < len(self.gel.channels):
+            return self._channel_arrays(mc)
+        return self.gel.data, self.gel.raw_max
 
     # ------------------------------------------------------------------ lanes
     def detect_lanes(self) -> list[Lane]:
@@ -659,11 +762,14 @@ class GelAnalysis:
         self._log("set_lane_names", {"names": names})
 
     # ------------------------------------------------------------- profiles
-    def lane_profile(self, i: int) -> dict:
-        if i in self._profiles:
-            return self._profiles[i]
+    def lane_profile(self, i: int, channel="auto") -> dict:
+        """Background-corrected profile of lane i. ``channel``: "auto" = the analysed image (the
+        marker channel for marker lanes, if set), or a channel index / None for the default image."""
+        key = i if channel == "auto" else (i, channel)
+        if key in self._profiles:
+            return self._profiles[key]
         lane = self.lanes[i]
-        a = self.data
+        a, satmask = self._lane_arrays(i, channel)
         H, W = a.shape
         hw = lane.width * self.params.lane_width_frac / 2
         c0, c1 = max(0, int(round(lane.x - hw))), min(W, int(round(lane.x + hw)) + 1)
@@ -679,20 +785,34 @@ class GelAnalysis:
             ca, cb = max(0, c0 + o), min(W, c1 + o)
             if cb > ca:
                 raw[m] = a[rows[m], ca:cb].sum(1, dtype=np.float64)
-                sat[m] = self.gel.raw_max[rows[m], ca:cb].sum(1)
-        base = self._baseline(raw, i, (r0, r1, c0, c1), off)
+                sat[m] = satmask[rows[m], ca:cb].sum(1)
+        base = self._baseline(raw, i, (r0, r1, c0, c1), off, a)
         prof = {"y": rows.astype(float), "raw": raw, "baseline": base,
                 "corr": raw - base, "sat": sat, "cols": (c0, c1), "offset": off}
-        self._profiles[i] = prof
+        self._profiles[key] = prof
         return prof
 
-    def _baseline(self, raw: np.ndarray, i: int, box, off: np.ndarray | None = None) -> np.ndarray:
-        m = self.params.bg_method
+    def smear_profile(self, i: int) -> tuple[np.ndarray, np.ndarray]:
+        """(rows, signal) of lane i with the background taken from BESIDE the lane. A rolling
+        ball treats a broad smear (degraded RNA/DNA) as background and removes it."""
+        pr = self.lane_profile(i)
+        y = pr["y"]
+        if not len(y):
+            return y, y
+        a = self._lane_arrays(i)[0]
+        r0, r1 = int(y[0]), int(y[-1]) + 1
+        c0, c1 = pr["cols"]
+        base = self._baseline(pr["raw"], i, (r0, r1, c0, c1), pr["offset"], a, method="lane_edges")
+        return y, np.clip(pr["raw"] - base, 0, None)
+
+    def _baseline(self, raw: np.ndarray, i: int, box, off: np.ndarray | None = None,
+                  a: np.ndarray | None = None, method: str | None = None) -> np.ndarray:
+        m = method or self.params.bg_method
         if m == "none":
             return np.zeros_like(raw)
         if m == "lane_edges":
             r0, r1, c0, c1 = box
-            a = self.data
+            a = self.data if a is None else a
             g = max(2, int(self.lanes[i].width * 0.1))
             o = int(np.median(off)) if off is not None and len(off) else 0
             left = a[r0:r1, max(0, c0 + o - 2 * g): max(0, c0 + o - g)]
@@ -845,10 +965,11 @@ class GelAnalysis:
         pr = self.lane_profile(b.lane)
         c0, c1 = pr["cols"]
         o = int(round(self.lanes[b.lane].dx(b.y)))
-        W = self.data.shape[1]
+        img = self._lane_arrays(b.lane)[0]
+        W = img.shape[1]
         c0, c1 = max(0, c0 + o), min(W, c1 + o)
         y0, y1 = int(b.y0), int(b.y1) + 1
-        block = self.data[y0:y1, c0:c1].sum(0, dtype=np.float64)
+        block = img[y0:y1, c0:c1].sum(0, dtype=np.float64)
         sel = (pr["y"] >= y0) & (pr["y"] < y1)
         # per-column share of the lane background (independent of neighbouring bands)
         col = block - pr["baseline"][sel].sum() / max(1, c1 - c0)
@@ -931,6 +1052,11 @@ class GelAnalysis:
                  list(p.marker_lanes), p.marker_load, p.marker_ref_load)
         if after == before:
             return
+        if p.marker_channel is not None and list(p.marker_lanes) != before[4]:
+            self._profiles = {}
+            mk = [L - 1 for L in p.marker_lanes if 0 < L <= len(self.lanes)]
+            if mk:
+                self.detect_bands(lanes=mk)
         self._log("set_marker", {"lanes": p.marker_lanes, "preset": p.marker_preset,
                                  "sizes": p.marker_sizes, "masses": p.marker_masses, "unit": p.marker_unit,
                                  "load": p.marker_load, "ref_load": p.marker_ref_load})
@@ -1221,8 +1347,36 @@ class GelAnalysis:
                     r[f"conc_{self.mass_fit['unit']}_per_ul"] = round(m / float(vol_ul), 3)
             rows.append(r)
         df = pd.DataFrame(rows)
+        df = self._compare(df)
         n_sat = int(df["saturated"].sum()) if len(df) else 0
-        self._log("quantify", {}, f"{len(df)} bands quantified, {n_sat} saturated")
+        extra = "; ".join(self.compare_warnings)
+        self._log("quantify", {"norm_method": self.params.norm_method, "rna_integrity": self.params.rna_integrity},
+                  f"{len(df)} bands quantified, {n_sat} saturated" + (f"; {extra}" if extra else ""))
+        return df
+
+    def _compare(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Per-channel volumes, band groups across lanes, normalisation, RNA integrity."""
+        from . import compare
+        self.compare_warnings: list[str] = []
+        self.rna = pd.DataFrame()
+        if not len(df):
+            return df
+        if len(self.gel.channels) > 1:              # every band measured in every channel
+            for k, name in enumerate(self.gel.channel_names):
+                col = compare.channel_column(name)
+                vals = []
+                for b in self.bands:
+                    pr = self.lane_profile(b.lane, channel=k)
+                    sel = (pr["y"] >= b.y0) & (pr["y"] <= b.y1)
+                    vals.append(round(float(pr["corr"][sel].sum()), 1))
+                df[col] = vals
+        size_col = f"size_{self.params.marker_unit}"
+        size_col = size_col if size_col in df and df.loc[~df["is_marker"], size_col].notna().any() else None
+        df = compare.add_band_groups(df, size_col, self.params.group_tol)
+        df, w = compare.normalise(df, self, size_col)
+        self.compare_warnings += w
+        if self.params.rna_integrity:
+            self.rna = compare.rna_integrity(self, df, size_col)
         return df
 
     def lanes_table(self) -> pd.DataFrame:
@@ -1236,7 +1390,11 @@ class GelAnalysis:
                          "n_bands": sum(b.lane == i for b in self.bands),
                          "sum_band_volume": round(sum(v for b, v in zip(self.bands, vols) if b.lane == i), 1),
                          "total_lane_signal": round(float(pr["corr"].sum()), 1)})
-        return pd.DataFrame(rows)
+        out = pd.DataFrame(rows)
+        rna = getattr(self, "rna", None)
+        if rna is not None and len(rna):
+            out = out.merge(rna.drop(columns=["lane_name"]), on="lane", how="left")
+        return out
 
     # ----------------------------------------------------------------- run all
     def run_auto(self) -> pd.DataFrame:

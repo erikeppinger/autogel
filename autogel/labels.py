@@ -12,10 +12,10 @@ from .markers import PRESETS
 
 
 def fmt_size(size: float, unit: str = "bp") -> str:
-    """10002 -> '10 kb', 1517 -> '1.5 kb', 900 -> '900', 37 kDa -> '37'."""
+    """10002 -> '10 kb', 1517 -> '1.5 kb', 900 -> '900', 37 kDa -> '37' (nt like bp)."""
     if not np.isfinite(size):
         return ""
-    if unit == "bp" and size >= 1000:
+    if unit in ("bp", "nt") and size >= 1000:
         kb = size / 1000
         return f"{kb:.0f} kb" if kb >= 9.95 else f"{kb:.1f} kb"
     return f"{size:.0f}"

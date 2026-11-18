@@ -65,6 +65,8 @@ replayable log.
 | D21 | Noise floor = weak relative to the gel **and** near the gel noise | Either criterion alone either removed faint ladder bands (relative) or too little (noise) |
 | D22 | Touching bands split by Gaussian areas (on); shoulder splitting optional (off) | Area split fixes biased ratios without changing band counts; shoulder splitting changes counts and misfires on lopsided real bands |
 | D23 | Curved lanes estimated per gel (shift + stretch vs. depth), opt-in | Per-lane tracing followed noise and gradients; the gel-wide model is robust on simulations but found a false drift on the lab's straight Test gels |
+| D24 | Several channels / added images; default image unchanged; marker lanes may come from another image | Western blots: the chemiluminescence image usually doesn't show the prestained marker; two-colour blots and stain-free images need more than one channel |
+| D25 | Lane comparison (band groups, normalisation, RNA) only ADDS columns | Plain densitometry results stay identical for existing users |
 
 ## 4. Test material
 
@@ -99,6 +101,63 @@ replayable log.
 ---
 
 ## 6. Change log
+
+### 0.5.0.dev0 – 2026-11-18 – branch `develop`: Western blots, channels, RNA, more ladders
+User goal: an open-source community tool for all gel types. The new features are developed on the
+branch `develop`; `main` stays at the released 0.4.1 until user feedback is in, and the two are
+merged later. 2D gels (spots instead of lanes) are out of scope for now.
+
+**Channels and added images (D24)**
+- `load_channels` keeps every channel: RGB (if the colours differ), multi-page TIFF pages.
+  The default image is unchanged (colour mean / page 1), so existing results don't change.
+- `GelAnalysis.set_channel(k)` analyses another channel; `-1` = all channels, each scaled to its
+  own 5th–99.9th percentile and combined by maximum (detects the bands of every colour).
+- `add_image(path)` adds a second picture of the same gel/membrane (same raw size, the gel's
+  orientation applied, dark-on-light detected per image), e.g. the white-light photo of a blot
+  with the prestained marker. Re-attached when a session is loaded.
+- `marker_channel`: the marker lanes are read (and their bands detected) from that channel.
+- With several channels every band also gets `volume_<channel>`.
+
+**Comparing lanes (`compare.py`, D25)**
+- **Band groups:** greedy 1-D clustering across lanes, by log size (±4 %) when calibrated,
+  otherwise by Rf (±0.02); at most one band per lane and group. Export: band groups × lanes
+  (volume / normalised / fold change).
+- **Western blot normalisation:** the loading-control band per lane (strongest band within
+  ±10 % of a given size, optionally from another channel) or the total lane signal; `fold_change`
+  vs. a reference lane per band group. Two-colour blots: separate channels for loading control
+  and target.
+- **RNA integrity:** 28S/18S volume ratio (by size with an RNA ladder, else the two strongest
+  bands) and the share of signal below 18S.
+  - The smear must be measured against the background beside the lane: with the default
+    rolling ball, a simulated degraded lane showed only 5 % below 18S (the smear was taken as
+    background); with the lane-edge background it shows 85 % (intact: 1 %).
+
+**Ladders, checked on the vendors' pages on 2026-11-18**
+- New unit **nt** for RNA.
+- Added:
+  - NEB ssRNA Ladder N0362: 9000/7000/5000/3000/2000/1000/500 nt, 3000 at double intensity.
+    A search summary had suggested a 6000 band; NEB's page says 7000.
+  - NEB Low Range ssRNA Ladder N0364: 1000/500/300/150/80/50 nt, 300 at double intensity.
+  - Thermo RiboRuler Low Range SM1831: 1000–100.
+  - NEB Lambda PFG Ladder N0341: 21 concatemers, 48.5–1018.5 kb.
+  - NativeMark LC0725: 1236–20 kDa, 8 bands.
+- **Not added:**
+  - RiboRuler High Range SM1821: the vendor page gives only the range, no band sizes.
+  - NEB Yeast Chromosome PFG Marker N0345: the product page no longer exists; the ApE entry
+    stays, unverified.
+- NEB's pages refuse automated fetching, so they were read in the built-in browser.
+
+**Tests (simulated, known truth)**
+- **Western blot:** chemiluminescence image without visible marker plus a white-light marker
+  image (inverted), target 55 kDa at 0.5–4×, loading control 42 kDa with uneven loading.
+  - Marker bands 10/10 from the marker image; sizes within 3 %; loading control found in 9/9
+    lanes; fold changes within 6 %.
+  - The session replay re-attaches the image and gives identical fold changes.
+- **Two-colour blot** (target page 1, loading control page 2) with *all channels* detection:
+  fold changes within 6 %.
+- **RNA:** intact 1.92 (true 2.0) with 1 % below 18S; degraded 1.11 with 85 %.
+- **Band groups without calibration** and the band-group matrix; the size check of added images.
+- **GUI:** the full Western-blot workflow incl. session restore, and the RNA checkbox.
 
 ### 0.4.1 – 2026-11-18 – macOS installer, license, download instructions
 User questions: how to get the ZIP, the license, and how Mac users install.

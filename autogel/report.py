@@ -56,6 +56,13 @@ def describe(e: dict) -> str:
                 f"radius {_n(p.get('bg_radius'))} px, min S/N {p.get('min_snr')}]")
     if s == "set_bands":
         return f"Bands edited ({p.get('reason', '')}): {r}"
+    if s == "set_channel":
+        return f"Analysed image: {r}"
+    if s == "add_image":
+        return (f"Added image {os.path.basename(p.get('path', ''))} as {r}"
+                + (" (dark bands on light, inverted)" if p.get("invert") else ""))
+    if s == "set_marker_channel":
+        return f"Marker lanes read from: {r}"
     if s == "suggest_ladder":
         return (f"Ladder suggestion for lane {p.get('lane')}: {', '.join(p.get('ranking', []))}; {r}")
     if s == "set_marker":

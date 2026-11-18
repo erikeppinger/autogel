@@ -17,6 +17,12 @@ class GelImage:
     saturation_level: float
     warnings: list[str] = field(default_factory=list)
     orientation: dict = field(default_factory=dict)
+    # several channels (colour image, multi-page TIFF, added images such as a marker photo):
+    # each oriented like ``data``, bands bright. Empty for a plain grey image.
+    channels: list[np.ndarray] = field(default_factory=list)
+    channel_masks: list[np.ndarray] = field(default_factory=list)
+    channel_names: list[str] = field(default_factory=list)
+    raw_shape: tuple = ()
 
 
 def _read(path: str) -> np.ndarray:
@@ -30,22 +36,36 @@ def _read(path: str) -> np.ndarray:
     return np.asarray(arr)
 
 
-def load_raw(path: str) -> tuple[np.ndarray, list[str], str]:
-    arr = _read(path)
-    warnings = []
-    arr = np.squeeze(arr)
+def load_channels(path: str) -> tuple[list[np.ndarray], list[str], str]:
+    """All channels of an image: grey -> one, colour -> red/green/blue (if they differ),
+    multi-page TIFF -> one per page (e.g. two fluorescence channels or exposures)."""
+    arr = np.squeeze(_read(path))
+    if arr.ndim == 3 and arr.shape[-1] in (3, 4):
+        ch = arr[..., :3]
+        if np.allclose(ch[..., 0], ch[..., 1]) and np.allclose(ch[..., 1], ch[..., 2]):
+            return [arr[..., 0]], ["grey"], str(arr.dtype)
+        return [ch[..., k] for k in range(3)], ["red", "green", "blue"], str(arr.dtype)
     if arr.ndim == 3:
-        if arr.shape[-1] in (3, 4):
-            ch = arr[..., :3].astype(float)
-            if np.allclose(ch[..., 0], ch[..., 1]) and np.allclose(ch[..., 1], ch[..., 2]):
-                arr = arr[..., 0]
-            else:
-                warnings.append("RGB image converted to grey (channel mean) - "
-                                "colour images are not reliable for quantification.")
-                arr = ch.mean(-1).astype(arr.dtype)
-        else:
-            warnings.append(f"Multi-page image ({arr.shape[0]} pages): using page 1.")
-            arr = arr[0]
+        n = arr.shape[0]
+        return [arr[k] for k in range(n)], [f"page {k + 1}" for k in range(n)], str(arr.dtype)
+    return [arr], ["grey"], str(arr.dtype)
+
+
+def _combine(chans: list[np.ndarray], names: list[str]) -> tuple[np.ndarray, list[str]]:
+    """The default single image: colour -> channel mean, pages -> page 1 (unchanged behaviour)."""
+    if len(chans) == 1:
+        return chans[0], []
+    if names[0] == "red":
+        m = np.mean([c.astype(float) for c in chans], axis=0).astype(chans[0].dtype)
+        return m, ["Colour image: analysed as the mean of red/green/blue. A single colour channel "
+                   "can be chosen under 'channel'."]
+    return chans[0], [f"Multi-page image ({len(chans)} pages): page 1 is analysed. Other pages can be "
+                      "chosen under 'channel'."]
+
+
+def load_raw(path: str) -> tuple[np.ndarray, list[str], str]:
+    chans, names, dtype = load_channels(path)
+    arr, warnings = _combine(chans, names)
     ext = os.path.splitext(path)[1].lower()
     if ext in (".jpg", ".jpeg"):
         warnings.append("JPEG input: lossy compression and usually auto-contrast - "
@@ -53,6 +73,25 @@ def load_raw(path: str) -> tuple[np.ndarray, list[str], str]:
     if arr.dtype == np.uint8:
         warnings.append("8-bit image: limited dynamic range; prefer the 16-bit TIFF export.")
     return arr, warnings, str(arr.dtype)
+
+
+def auto_invert(arr: np.ndarray) -> bool:
+    """Dark bands on a light background? (bands are the minority signal)"""
+    small = _block_mean(arr.astype(float), max(1, min(arr.shape) // 400))
+    med, lo, hi = np.median(small), np.percentile(small, 1), np.percentile(small, 99.9)
+    return bool((med - lo) > (hi - med))
+
+
+def orient_channel(raw: np.ndarray, o: dict, invert: bool) -> tuple[np.ndarray, np.ndarray]:
+    """One raw channel -> (oriented float32 image with bright bands, saturation mask)."""
+    sat, _ = saturation_level(raw)
+    a = raw.astype(np.float32)
+    if invert:
+        a = np.float32(raw.max()) - a
+        mask = raw <= (0 if np.issubdtype(raw.dtype, np.integer) else raw.min())
+    else:
+        mask = raw >= sat
+    return apply_orientation(a, o), apply_orientation(mask, o)
 
 
 def saturation_level(arr: np.ndarray) -> tuple[float, str]:
@@ -270,6 +309,7 @@ def apply_orientation(a: np.ndarray, o: dict, order: int = 1) -> np.ndarray:
 def load_gel(path: str, orientation: dict | None = None, invert: bool | None = None) -> GelImage:
     """Load an image and orient it. ``orientation`` (from a saved session) skips auto-detection."""
     arr, warnings, dtype = load_raw(path)
+    chans, names, _ = load_channels(path)
     sat, sat_note = saturation_level(arr)
     sat_mask = arr >= sat
     o = dict(orientation) if orientation else detect_orientation(arr, invert)
@@ -292,5 +332,12 @@ def load_gel(path: str, orientation: dict | None = None, invert: bool | None = N
     if n_sat:
         warnings.append(f"{n_sat} saturated pixels (level: {sat_note}). "
                         "Bands containing them are flagged and their intensity is underestimated.")
-    return GelImage(data=data, raw_max=mask, path=path, dtype=dtype,
-                    saturation_level=sat, warnings=warnings, orientation=o)
+    g = GelImage(data=data, raw_max=mask, path=path, dtype=dtype,
+                 saturation_level=sat, warnings=warnings, orientation=o, raw_shape=tuple(arr.shape))
+    if len(chans) > 1:
+        for c, n in zip(chans, names):
+            d, m = orient_channel(c, o, bool(o["invert"]))
+            g.channels.append(d)
+            g.channel_masks.append(m)
+            g.channel_names.append(n)
+    return g

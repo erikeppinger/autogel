@@ -550,3 +550,64 @@ def test_new_band_and_mass_options_reach_the_analysis(ui, tmp_path, monkeypatch)
     w._open_session_dialog()
     assert w.chk_shoulder.isChecked() and not w.chk_floor.isChecked() and not w.chk_curved.isChecked()
     assert w.cb_mass.currentText() == "size-dependent"
+
+
+def test_western_blot_workflow(ui, monkeypatch, tmp_path):
+    """Chemiluminescence image + white-light marker image, loading-control normalisation."""
+    w, v, msgs, _ = ui
+    from .test_compare import AMOUNT, _western
+    chemi, marker = _western(tmp_path)
+    w.open_image(chemi)
+    assert w.cb_channel.count() == 1 and not w.cb_marker_ch.isEnabled()      # plain grey image
+    w.sp_lanes.setValue(10)
+    w.detect_lanes()
+    w.detect_bands()
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (marker, ""))
+    w._add_image_dialog()
+    assert [w.cb_marker_ch.itemText(i) for i in range(w.cb_marker_ch.count())] == \
+        ["same image", "1: image", "2: marker"]
+    assert w.cb_channel.itemText(w.cb_channel.count() - 1) == "all channels"
+    w.cb_preset.setCurrentText("Bio-Rad Precision Plus Protein Dual Color (1610374)")
+    w.ed_marker_lanes.setText("1")
+    w.cb_marker_ch.setCurrentIndex(2)
+    assert w.ga.params.marker_channel == 1 and sum(b.lane == 0 for b in w.ga.bands) == 10
+    w.cb_norm.setCurrentText("loading-control band")
+    w.sp_lc.setValue(42)
+    w.sp_ref_lane.setValue(2)
+    w.quantify()
+    tgt = w.df[(~w.df.is_marker) & w.df.size_kDa.between(50, 60)]
+    fc = dict(zip(tgt.lane, tgt.fold_change))
+    for k, amount in AMOUNT.items():
+        assert fc[k + 1] == pytest.approx(amount, rel=0.08), k
+    # switching the analysed channel shows that image and keeps lanes/bands
+    n_bands = len(w.ga.bands)
+    w.cb_channel.setCurrentIndex(2)
+    assert w.ga.params.channel == 1 and np.allclose(v.layers["gel"].data, w.ga.gel.channels[1])
+    assert len(w.ga.bands) == n_bands
+    w.cb_channel.setCurrentIndex(0)
+    # the session restores images and choices
+    s = tmp_path / "wb.json"
+    w.ga.save_session(str(s))
+    w.cb_norm.setCurrentText("none")
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *a, **k: (str(s), ""))
+    w._open_session_dialog()
+    assert w.cb_norm.currentText() == "loading-control band" and w.sp_lc.value() == 42
+    assert w.cb_marker_ch.currentData() == 1 and w.sp_ref_lane.value() == 2
+
+
+def test_rna_checkbox_shows_ratio(ui, tmp_path):
+    w, v, msgs, _ = ui
+    from .synth import make_gel
+    from .test_compare import RNA_LAD, y_nt
+    lanes = {0: [(y_nt(s), 6000, 4) for s in RNA_LAD]}
+    lanes.update({k: [(y_nt(5000), 8000, 5), (y_nt(1900), 4200, 5)] for k in range(1, 9)})
+    w.open_image(make_gel(str(tmp_path / "rna.tif"), lanes=lanes, noise=30))
+    w.sp_lanes.setValue(10)
+    w.detect_lanes()
+    w.detect_bands()
+    w.cb_preset.setCurrentText("NEB ssRNA Ladder (N0362)")
+    w.ed_marker_lanes.setText("1")
+    w.chk_rna.setChecked(True)
+    w.quantify()
+    assert "RNA 28S/18S" in w.lbl_cal.text()
+    assert "rna_28s_18s" in w.ga.lanes_table()

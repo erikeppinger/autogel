@@ -14,7 +14,7 @@ LADDERS = LIB["ladders"]
 @pytest.mark.parametrize("e", LADDERS, ids=[e["name"] for e in LADDERS])
 def test_entry_is_consistent(e):
     sizes = e["sizes"]
-    assert e["unit"] in ("bp", "kDa")
+    assert e["unit"] in ("bp", "nt", "kDa")
     assert sizes == sorted(sizes, reverse=True) and len(set(sizes)) == len(sizes)
     if e.get("masses"):
         assert len(e["masses"]) == len(sizes)
