@@ -124,7 +124,12 @@ User questions: how to get the ZIP, the license, and how Mac users install.
 - **CI `installer check`:**
   - runs the installers on macOS, Ubuntu and Windows exactly as from the ZIP
   - then the installed CLI, a live library update, the full test suite in the installed
-    environment (Qt offscreen) and the uninstaller
+    environment and the uninstaller
+  - GUI tests need OpenGL: on Linux a virtual screen (xvfb + Mesa); on macOS the runner's window
+    server. Qt's "offscreen" mode has no OpenGL, so napari failed to start (first run).
+  - **Result (run 44402066431):** macOS, Ubuntu and Windows all pass. On macOS: app created,
+    `Info.plist` valid, library update 13 ladders, 110 core + 24 GUI tests passed, uninstaller
+    clean.
 - **Checked locally:**
   - WSL Ubuntu (Python 3.14 without `venv`): clear error, exit code 1, no half-built
     environment left behind
