@@ -30,3 +30,9 @@ Documentation:
 - [docs/LABBOOK.md](docs/LABBOOK.md) — idea, design decisions, change log
 
 Tests: `pip install -e .[dev] && pytest`
+
+## License
+
+BSD 3-Clause, see [LICENSE](LICENSE). The dependencies keep their own licenses (mostly BSD/MIT;
+the Qt binding PyQt6, installed with the GUI, is GPL-3). Ladder sizes come from vendor
+datasheets and from ApE by M. Wayne Davis (credited in the library files).
