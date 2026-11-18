@@ -37,7 +37,7 @@ hundred MB of RAM.
 Requires Python ≥ 3.10.
 
 ```bash
-git clone https://github.com/<account>/autogel-bands-and-lanes autogel
+git clone https://github.com/erikeppinger/autogel
 cd autogel
 python -m venv .venv
 .venv\Scripts\activate          # Windows   (Linux/macOS: source .venv/bin/activate)

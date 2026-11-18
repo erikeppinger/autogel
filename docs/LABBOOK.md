@@ -64,6 +64,7 @@ replayable log.
 | File | Description |
 |---|---|
 | `<lab share>\Test_1.tif`, `Test_2.tif` | agarose DNA gels; 16-bit LZW TIFF, 2592×1944. 20 lanes, NEB 1 kb Plus (N0550) in lanes 1 and 20. Gel-tray edges and labels visible. Clip level 62846; 30 / 15 saturated px |
+| (real-gel tests) | `tests/test_real_gels.py` runs only when the environment variable `AUTOGEL_TEST_GELS` points to the folder with Test_1/Test_2 (the lab share is not in the public repository) |
 | `tests/synth.py` | synthetic gels with known positions and intensities (rotation, inversion, dust, clipping, empty lanes) |
 
 ## 5. Known limitations / open points
