@@ -75,11 +75,36 @@ replayable log.
 - Overlapping bands are split at the valley between them, with no Gaussian deconvolution yet.
 - Lane-count auto-estimate without user input can include tray-edge or label peaks next to the
   gel. That's why the GUI asks.
-- Built-in ladders other than NEB 1 kb Plus are not yet verified against datasheets.
+- Ladders not yet verified: GeneRuler 100 bp Plus / 100 bp (sizes and masses) and Bio-Rad
+  Precision Plus (sizes). The NEB P7719 protein standard is missing; its band table wasn't
+  readable on the product page.
+- ApE (A plasmid Editor) ships ladder definition files that could add many more ladders. Its
+  download needs approval first.
 
 ---
 
 ## 6. Change log
+
+### 0.1.1 – 2026-11-18 – ladder library filled from vendor data
+- **Changed** `ladders.json` to format 2. Each entry now has:
+  - vendor and catalog number
+  - `reference_load` (amount, unit, volume, verbatim text)
+  - `reference_bands`, `note`, `source`, `verified` and `checked`
+- **Verified** (sizes and band masses):
+  - NEB N0550, N3200, N3232 and N3231, read from the product pages in the built-in browser;
+    NEB blocks automated fetching
+  - Thermo GeneRuler SM1331, SM0311 and SM0331, from the user-guide PDFs
+    (MAN0013047, MAN0013004, MAN0013012)
+- **Verified** (sizes only): PageRuler 26616, 26619 and 26614.
+- **Fixed** NEB sizes: they are now the exact values from the datasheets (10002, 8001, …, 2017,
+  1517). The NEB 100 bp ladder had 517 and 500 as separate bands; they are one co-migrating
+  doublet.
+- **Changed** the default preset to "NEB Quick-Load Purple 1 kb Plus (N0550)".
+- **Changed** the mass scaling to take its reference load from the library. The GUI enters
+  loads in µg and shows each ladder's verification status, load note and source link.
+- **Added** `tests/test_ladders.py`: library consistency, and the band masses must add up to the
+  stated load. This catches transcription errors: the totals are 1002 ng, 502 ng and 500 ng.
+- **Checked**: ruff clean; `pytest` 49 passed (incl. both example gels).
 
 ### 0.1.0 – 2026-11-18 – first working version
 - **Added** core library `autogel.analysis`: orientation/skew/inversion detection, lane detection,

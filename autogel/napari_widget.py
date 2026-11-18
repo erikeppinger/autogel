@@ -202,6 +202,11 @@ class AutogelWidget(QWidget):
         self.cb_preset.setCurrentText(DEFAULT_PRESET)
         self.cb_preset.currentTextChanged.connect(self._preset_changed)
         f.addRow("ladder", self.cb_preset)
+        self.lbl_ladder = QLabel("")
+        self.lbl_ladder.setWordWrap(True)
+        self.lbl_ladder.setOpenExternalLinks(True)
+        self.lbl_ladder.setStyleSheet("color: gray")
+        f.addRow(self.lbl_ladder)
         self.ed_sizes = QLineEdit()
         f.addRow("sizes (top→bottom)", self.ed_sizes)
         self.ed_masses = QLineEdit()
@@ -215,12 +220,17 @@ class AutogelWidget(QWidget):
         f.addRow("marker lane(s)", self.ed_marker_lanes)
         self.sp_load = QDoubleSpinBox()
         self.sp_load.setRange(0, 1e6)
+        self.sp_load.setDecimals(3)
+        self.sp_load.setSuffix(" µg")
         self.sp_load.setSpecialValueText("as datasheet")
+        self.sp_load.setToolTip("Amount of ladder DNA you loaded (µg). µl → µg: volume × stock concentration")
         f.addRow("ladder loaded", self.sp_load)
         self.sp_ref = QDoubleSpinBox()
         self.sp_ref.setRange(0, 1e6)
-        self.sp_ref.setSpecialValueText("as datasheet")
-        self.sp_ref.setToolTip("Ladder amount the datasheet masses refer to (same unit as 'ladder loaded')")
+        self.sp_ref.setDecimals(3)
+        self.sp_ref.setSuffix(" µg")
+        self.sp_ref.setSpecialValueText("from library")
+        self.sp_ref.setToolTip("Ladder amount the datasheet masses refer to; filled from the ladder library")
         f.addRow("datasheet load", self.sp_ref)
         self.ed_loads = QLineEdit()
         self.ed_loads.setPlaceholderText("sample µl per lane, e.g. 2:5, 3:5 (→ ng/µl)")
@@ -620,10 +630,30 @@ class AutogelWidget(QWidget):
 
     # ------------------------------------------------------- calibration
     def _preset_changed(self, name):
-        if name in PRESETS:
-            pre = PRESETS[name]
-            self.ed_sizes.setText(", ".join(f"{s:g}" for s in pre["sizes"]))
-            self.ed_masses.setText(", ".join(f"{m:g}" for m in pre["masses"]) if pre.get("masses") else "")
+        if name not in PRESETS:
+            self.lbl_ladder.setText("custom ladder: enter sizes (and masses) below")
+            return
+        pre = PRESETS[name]
+        self.ed_sizes.setText(", ".join(f"{s:g}" for s in pre["sizes"]))
+        self.ed_masses.setText(", ".join(f"{m:g}" for m in pre["masses"]) if pre.get("masses") else "")
+        ref = pre.get("reference_load") or {}
+        self.sp_ref.setValue(float(ref.get("amount") or 0))
+        bits = []
+        if pre.get("user_defined"):
+            bits.append("your ladder")
+        elif pre.get("verified"):
+            bits.append(f"✔ checked against vendor data {pre.get('checked', '')}")
+        else:
+            bits.append("⚠ not yet verified - compare with your datasheet")
+        if ref.get("text"):
+            bits.append(f"masses: {ref['text']}")
+        elif not pre.get("masses"):
+            bits.append("no band masses → no ng estimate")
+        if pre.get("note"):
+            bits.append(pre["note"])
+        if pre.get("source"):
+            bits.append(f'<a href="{pre["source"]}">source</a>')
+        self.lbl_ladder.setText("<br>".join(bits))
 
     def _save_ladder(self):
         name, ok = QInputDialog.getText(self, "Save ladder", "Name for this ladder:")

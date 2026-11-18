@@ -496,9 +496,14 @@ class GelAnalysis:
         return self.calibrations
 
     def mass_scale(self) -> float:
+        """Loaded ladder / datasheet reference load. The reference defaults to the
+        library entry's reference_load (e.g. NEB 1 kb Plus: 1 µg)."""
         p = self.params
-        if p.marker_load and p.marker_ref_load:
-            return float(p.marker_load) / float(p.marker_ref_load)
+        ref = p.marker_ref_load
+        if not ref:
+            ref = (PRESETS.get(p.marker_preset or "", {}).get("reference_load") or {}).get("amount")
+        if p.marker_load and ref:
+            return float(p.marker_load) / float(ref)
         return 1.0
 
     def _fit_mass(self):

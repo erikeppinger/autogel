@@ -4,9 +4,9 @@ import os
 import pytest
 
 from autogel.analysis import GelAnalysis, Params
+from autogel.markers import DEFAULT_PRESET as PRESET
 
 GEL_DIR = os.environ.get("AUTOGEL_TEST_GELS", "")
-PRESET = "NEB 1 kb Plus (N3200/N0550, Quick-Load Purple)"
 
 
 @pytest.mark.parametrize("name", ["Test_1.tif", "Test_2.tif"])

@@ -66,7 +66,7 @@ def save_user_ladder(name: str, sizes: list[float], unit: str = "bp",
 
 
 PRESETS: dict[str, dict] = load_library()
-DEFAULT_PRESET = "NEB 1 kb Plus (N3200/N0550, Quick-Load Purple)"
+DEFAULT_PRESET = "NEB Quick-Load Purple 1 kb Plus (N0550)"
 
 
 def parse_sizes(text: str) -> list[float]:

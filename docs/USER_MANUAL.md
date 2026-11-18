@@ -94,26 +94,45 @@ The **autogel** panel on the right guides you from top to bottom.
   - saturated points
 
 ### 3.4 Marker / calibration
-1. Choose the **ladder**. The default is *NEB 1 kb Plus (N0550)*. Sizes (and masses, if known)
-   are filled in and can be edited.
+1. Choose the **ladder**. The default is *NEB Quick-Load Purple 1 kb Plus (N0550)*. Sizes (and
+   masses, if known) are filled in and can be edited. The grey line under the list shows:
+   - whether the entry was checked against the vendor's data (✔) or not yet (⚠)
+   - which load the datasheet masses refer to
+   - notes such as co-migrating doublets
+   - a link to the source
 2. Enter the **marker lane(s)**, e.g. `1, 20`. With two markers, sizes are interpolated across
    the gel, which corrects "smiling".
-3. Optional DNA amount estimate:
-   - **ladder loaded**: how much ladder you put on the gel.
-   - **datasheet load**: the amount the datasheet masses refer to, in the same unit (µl or ng).
-     If you loaded exactly that amount, leave both at *as datasheet*.
+3. Optional DNA amount estimate (only for ladders with band masses):
+   - **ladder loaded (µg)**: how much ladder DNA you loaded. Leave it at *as datasheet* if you
+     loaded the reference amount.
+     - Volume → µg = µl × stock concentration.
+     - Example: N0550 is 0.1 µg/µl, so 5 µl = 0.5 µg and the datasheet masses are halved.
+   - **datasheet load (µg)** is filled in from the library: NEB 1 kb Plus = 1 µg, NEB 1 kb and
+     100 bp = 0.5 µg, GeneRuler = 0.5 µg.
    - autogel fits band volume against ng for the ladder bands (unsaturated bands only, line
      through the origin). The table then gets `est_mass_ng`, and the fit's R² is shown.
    - **sample loads** (`lane:µl`, e.g. `2:5, 3:5`) adds `conc_ng_per_ul`.
 4. Click **Calibrate & quantify**.
 5. If the number of detected marker bands differs from the ladder, you get a warning. Add or
-   delete marker bands until the counts match.
+   delete marker bands until the counts match. Doublets such as NEB's 500/517 bp count as
+   **one** band.
+
+Built-in ladders, as of 2026-11-18:
+
+| Ladder | Masses | Verified |
+|---|---|---|
+| NEB Quick-Load Purple 1 kb Plus (N0550), NEB 1 kb Plus (N3200) | ng per 1 µg | ✔ |
+| NEB 1 kb (N3232), NEB 100 bp (N3231) | ng per 0.5 µg | ✔ |
+| GeneRuler 1 kb Plus (SM1331), 1 kb (SM0311), DNA Ladder Mix (SM0331) | ng per 0.5 µg | ✔ |
+| PageRuler Prestained (26616), Plus Prestained (26619), Unstained (26614) | – | ✔ sizes |
+| GeneRuler 100 bp Plus (SM0321), 100 bp (SM0241), Bio-Rad Precision Plus Dual Color (1610374) | – | ⚠ count/range only |
 
 **Your own ladders:** edit the sizes and masses, then click **Save sizes/masses as my ladder…**.
 It is stored in `~/.autogel/ladders.json` and appears in the list from then on.
 
 > ⚠ Ladder data comes from vendor datasheets. Entries marked `"verified": false` in
-> `autogel/ladders.json` have not yet been checked. Compare them with the datasheet of your lot.
+> `autogel/ladders.json` have not yet been checked. Lots can change, so compare with the
+> datasheet of your lot.
 
 ### 3.5 Display
 - **colours**: *colour-blind safe (Okabe-Ito)* is the default. *classic* uses cyan, lime, gold
