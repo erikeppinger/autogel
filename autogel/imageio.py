@@ -150,11 +150,44 @@ def lanes_vertical_vote(small: np.ndarray) -> float | None:
     return horiz / (horiz + vert)
 
 
+UNSURE_SCORE = 0.1   # |vertical_score| below this: warn that the 90° decision is uncertain
+
+
+def _edge_max(rp: np.ndarray) -> float:
+    """Strongest periodic row in the top or bottom 35 % (where a well row would be)."""
+    n = len(rp)
+    return float(max(rp[: int(n * 0.35)].max(initial=0), rp[int(n * 0.65):].max(initial=0)))
+
+
+def lane_comb_periodicity(small: np.ndarray) -> tuple[float, float]:
+    """Periodicity of the mean profile along x and along y (autocorrelation peak, 0..1).
+
+    Lanes repeat at a regular spacing across the gel, so the profile across the lanes is
+    periodic - smeared lanes make this stronger, not weaker."""
+    from scipy import signal as sig
+
+    def per(p: np.ndarray) -> float:
+        p = p - ndimage.uniform_filter1d(p, max(5, len(p) // 6))
+        p = p - p.mean()
+        ac = np.correlate(p, p, "full")[len(p) - 1:]
+        if ac[0] <= 0:
+            return 0.0
+        ac = ac / ac[0]
+        lo, hi = max(3, len(p) // 60), max(4, len(p) // 4)
+        pk, _ = sig.find_peaks(ac[lo:hi])
+        return float(ac[lo:hi][pk].max()) if len(pk) else 0.0
+
+    h, w = small.shape
+    c = small[h // 10: h - h // 10, w // 10: w - w // 10]
+    return per(c.mean(0)), per(c.mean(1))
+
+
 def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
     """Return dict(invert, rot90_k, flip_lr, angle) to bring lanes vertical, wells on top.
 
-    Conservative: most gel photos are saved upright, so the image is only turned when the
-    evidence is clear (bands elongated the other way; a well row clearly at the bottom)."""
+    Lanes vertical vs. horizontal: a weighted sum of band shape, well row, lane comb and edge
+    energy (``vertical_cues``). Upside down: conservative, only when a well row is clearly at
+    the bottom and not at the top, because most gel photos are saved upright."""
     a = img.astype(float)
     small = _block_mean(a, max(1, min(a.shape) // 400))
     if invert is None:
@@ -163,18 +196,24 @@ def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
         invert = (med - lo) > (hi - med)
     if invert:
         small = small.max() - small
+    # Lane direction: weighted evidence from four cues, each positive for "lanes vertical".
+    # Band shape alone was fooled by heavily smeared lanes (their streaks look like tall
+    # blobs); a periodic well row and the lane comb are not, because both run *across* lanes.
     vote = lanes_vertical_vote(small)
     th = ndimage.white_tophat(small, size=15)
     th = np.minimum(th, np.percentile(th, 99.9))
     ey = float((ndimage.sobel(th, 0) ** 2).sum())
     ex = float((ndimage.sobel(th, 1) ** 2).sum())
-    if vote is not None and abs(vote - 0.5) > 0.15:
-        k = 0 if vote > 0.5 else 1
-    else:                                   # no clear band shape: fall back to edge energy
-        k = 0 if ey >= ex else 1
-    s = np.rot90(small, k)
+    rp0, rp1 = row_periodicity(small), row_periodicity(np.rot90(small, 1))
+    comb_x, comb_y = lane_comb_periodicity(small)
+    cues = {"band_shape": 0.0 if vote is None else vote - 0.5,
+            "well_row": 0.5 * (_edge_max(rp0) - _edge_max(rp1)),
+            "lane_comb": comb_x - comb_y,
+            "edge_energy": 0.05 * (1.0 if ey >= ex else -1.0)}
+    score = float(sum(cues.values()))
+    k = 0 if score > 0 else 1
     # upside down only if a row of wells is clearly at the bottom and not at the top
-    rp = row_periodicity(s)
+    rp = rp0 if k == 0 else rp1
     n = len(rp)
     top, bottom = rp[: int(n * 0.35)].max(initial=0), rp[int(n * 0.65):].max(initial=0)
     flipped = bottom > 0.6 and bottom > top + 0.15
@@ -185,7 +224,9 @@ def detect_orientation(img: np.ndarray, invert: bool | None = None) -> dict:
     return {"invert": bool(invert), "rot90_k": int(k % 4), "flip_lr": False,
             "angle": float(angle), "band_shape_vote": None if vote is None else round(float(vote), 3),
             "well_score_top": round(float(top), 3),
-            "well_score_bottom": round(float(bottom), 3)}
+            "well_score_bottom": round(float(bottom), 3),
+            "vertical_score": round(score, 3),
+            "vertical_cues": {c: round(float(v), 3) for c, v in cues.items()}}
 
 
 def estimate_skew(small: np.ndarray, max_deg: float = 3.0, step: float = 0.25) -> float:
@@ -223,6 +264,14 @@ def load_gel(path: str, orientation: dict | None = None, invert: bool | None = N
     sat, sat_note = saturation_level(arr)
     sat_mask = arr >= sat
     o = dict(orientation) if orientation else detect_orientation(arr, invert)
+    if o.get("angle") is None:          # rotated/flipped by the user: re-estimate the skew
+        small = _block_mean(arr.astype(float), max(1, min(arr.shape) // 400))
+        if o.get("invert"):
+            small = small.max() - small
+        o["angle"] = float(estimate_skew(apply_orientation(small, {**o, "angle": 0.0})))
+    if not orientation and abs(o.get("vertical_score", 1.0)) < UNSURE_SCORE:
+        warnings.append("Lane direction uncertain: check that the lanes run top to bottom "
+                        "(otherwise click Rotate 90°).")
     a = arr.astype(np.float32)   # exact for <= 24-bit integers, half the RAM of float64
     if o["invert"]:
         a = np.float32(arr.max()) - a

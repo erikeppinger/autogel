@@ -76,10 +76,11 @@ The **autogel** panel on the right guides you from top to bottom.
 - **Log ▸** opens the complete list of steps for this gel.
 
 **Easy / Expert mode** (switch at the top of the panel; your choice is remembered):
-- **Easy** shows only the essential steps: open the image, set the lane count, detect lanes and
-  bands, choose the ladder and marker lanes, quantify, and export.
+- **Easy** shows only the essential steps: open the image (with **Rotate 90°** and the flip
+  buttons), set the lane count, detect lanes and bands, choose the ladder and marker lanes,
+  quantify, and export.
 - **Expert** adds:
-  - orientation and skew controls
+  - skew and dark-band (invert) controls
   - background and detection settings
   - re-detecting bands in a single lane
   - editing ladder sizes and masses
@@ -93,8 +94,11 @@ The **autogel** panel on the right guides you from top to bottom.
   - turns the image so the lanes run vertically with the wells on top
   - corrects a slight tilt (skew)
   - detects whether the bands are bright (EtBr, SYBR) or dark (Coomassie, silver)
-- If the orientation is wrong, use **Rotate 90°**, **Flip ↔**, **Flip ↕**, the **dark bands**
-  checkbox or the **skew °** box. Each correction is logged.
+- If the orientation is wrong, use **Rotate 90°**, **Flip ↔** or **Flip ↕** (both modes), or the
+  **dark bands** checkbox and the **skew °** box (Expert). Each correction is logged, and saved
+  sessions keep it.
+- When the lane direction is a close call, an orange warning says *Lane direction uncertain*.
+  Check that the lanes run top to bottom; click **Rotate 90°** if not.
 - Saturated pixels are shown in orange-red in the colour-blind-safe palette (red in the classic one).
 
 ### 3.2 Lanes
@@ -347,13 +351,13 @@ Options of `run`:
 
 | Gels | autogel finds | of its detections are outlined bands |
 |---|---|---|
-| ladder test gels | 87 % of the bands | 80 % |
+| ladder test gels | 86 % of the bands | 80 % |
 | routine lab gels (JPEG) | 81 % | 27 % |
 | gels from five other labs (incl. 5 images with gels side by side) | 83 % | 33 % |
 
-- The 90° orientation was wrong on 4 of 95 images, mostly gels with heavily smeared lanes. Check
-  that the lanes run top to bottom and click **Rotate 90°** if not; the numbers above assume
-  that correction.
+- The automatic 90° decision was wrong on 1 of 95 images (version 0.3.0: 4), and that image
+  got the *Lane direction uncertain* warning. Check that the lanes run top to bottom and click
+  **Rotate 90°** if not; the numbers above assume that correction.
 - The last column is a lower bound, because faint bands and smears were often not outlined.
 
 **In practice:**

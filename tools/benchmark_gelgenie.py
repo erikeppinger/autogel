@@ -115,7 +115,7 @@ def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     need_k_odd = tall > wide            # lanes horizontal in the original image
     orientation_error = (o0.get("rot90_k", 0) % 2 == 1) != need_k_odd
     if orientation_error:
-        o0 = {**o0, "rot90_k": (o0.get("rot90_k", 0) + 1) % 4, "angle": 0.0}
+        o0 = {**o0, "rot90_k": (o0.get("rot90_k", 0) + 1) % 4, "angle": None}
     m0 = apply_orientation((np.asarray(mask_raw) > 0).astype(np.float32), {**o0, "invert": False}, order=0) > 0.5
     regions0 = components(m0)
     if layout:

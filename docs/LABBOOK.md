@@ -58,6 +58,7 @@ replayable log.
 | D14 | Session JSON stores orientation, params, lanes and bands, plus the log → exact replay | "Log of what was done" must be reproducible, including manual edits |
 | D15 | Working image as **float32**, sums in float64 | Exact for 16-bit data, half the RAM of float64 |
 | D16 | Okabe-Ito palette as default; band size labels only on marker lanes and the selected lane | Colour-blind users; labels overlapped with 20 lanes (user feedback) |
+| D17 | Lane direction (90°) = **weighted sum of four cues**: band shape, periodic well row near the top/bottom, lane-comb periodicity across the gel, edge energy (tie-break). Warn when the sum is near 0 | Band shape alone (which replaced D3's gradient energy in 0.2.1) turned 4 of 95 real gels with heavily smeared lanes by 90°. The well row and the lane comb run across the lanes, so smears don't fool them. Weights checked on the 95 gels both as they are and turned 90° |
 
 ## 4. Test material
 
@@ -76,6 +77,8 @@ replayable log.
 - Overlapping bands are split at the valley between them, with no Gaussian deconvolution yet.
 - JPEG / 8-bit images and scratched gels can produce a few spurious faint bands. Use the
   original TIFF, and delete such bands in the viewer.
+- The 90° decision is still wrong on 1 of 95 real gels (CB 2022-04-07, a near-tie); the
+  *Lane direction uncertain* warning covers it. Rotate 90° fixes it in one click.
 - Smiling gels need a marker in the middle for accurate sizes (2–3 % instead of 7–10 %).
 - Lane-count auto-estimate without user input can include tray-edge or label peaks next to the
   gel. That's why the GUI asks.
@@ -88,6 +91,50 @@ replayable log.
 ---
 
 ## 6. Change log
+
+### 0.3.1 – 2026-11-18 – lane direction for smeared gels
+User request: improve the 90° orientation for gels with heavily smeared lanes; make sure the user
+can intervene.
+
+- **Diagnosis:** all 95 benchmark gels are upright; the 4 failures were upright gels turned by
+  90°. Their band-shape vote was 0.23–0.59, because smear streaks form tall blobs; the
+  edge-energy fallback then decided wrongly.
+- **Simply trusting "upright" doesn't work:** tested on the 95 gels plus the same gels turned
+  90° (190 cases), an upright-favouring rule only moved the errors to the turned copies
+  (9 wrong vs. 8 before).
+- **New rule (D17):** a weighted sum of four cues, each positive for "lanes vertical":
+  - band shape (vote − 0.5)
+  - 0.5 × (periodic well row near top/bottom − same for the turned image)
+  - lane comb: periodicity of the mean profile across x − along y
+  - ± 0.05 edge energy as tie-break
+
+  **Result:** 188 of 190 cases right, versus 182 for the old rule. Neighbouring weights give
+  4–6 errors. About 0.3 s per image.
+- **Uncertainty warning:** when |score| < 0.1, the image gets the warning *Lane direction
+  uncertain*. This fires on 8 of 190 cases, including both remaining errors. It is not shown
+  for an orientation the user set (Rotate 90°, saved session).
+- **GUI:** Rotate 90° / Flip ↔ / Flip ↕ are now visible in Easy mode; before, they were
+  Expert-only, so an Easy user couldn't fix a wrong orientation. Skew and invert stay in Expert.
+- **Bug fix, found in review:** Flip ↔ / Flip ↕ kept the skew angle, but a mirrored image
+  tilts the other way, so a gel tilted by 2.5° was left 5° crooked. Flips now negate the angle.
+  Rotate 90° re-measures the skew in the new orientation (rotations keep the tilt, so this only
+  guards against a skew measured on a wrongly oriented image).
+- **Tests:**
+  - Flip reverses the skew; Rotate keeps it
+  - a smear-fooled band-shape vote on an upright and on a turned synthetic gel is overruled
+  - the uncertainty warning
+  - rotate/flip visible in Easy mode
+  - break test: tiny, constant, pure-noise and 12-MP images; no crash, and featureless images
+    score ≈ 0 (warning)
+- **Benchmark (default settings):**
+
+| Subset | 90° wrong (0.3.0) | Found (incl. merged) | Strict | Precision |
+|---|---|---|---|---|
+| ladder gels | 0 (1) | 0.862 | 0.854 | 0.796 |
+| lab gels (JPEG) | 0 (0) | 0.810 | 0.749 | 0.272 |
+| other labs | 1 (3) | 0.830 | 0.789 | 0.327 |
+
+- **Checked:** ruff clean; `pytest` 98 passed (incl. real gels and gallery).
 
 ### 0.3.0 – 2026-11-18 – gels side by side
 User request: support two gels lying side by side in one image (seen in the external benchmark

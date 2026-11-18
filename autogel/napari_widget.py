@@ -273,16 +273,19 @@ class AutogelWidget(QWidget):
         self.lbl_warn.setWordWrap(True)
         self.lbl_warn.setStyleSheet("color: orange")
         f.addWidget(self.lbl_warn)
+        # rotate / flip stay visible in Easy mode: a wrong automatic orientation must be fixable
+        row = QHBoxLayout()
+        for txt, fn, tip in (("Rotate 90°", self._rot90, "Lanes must run top to bottom"),
+                             ("Flip ↔", self._flip_lr, "Mirror left/right"),
+                             ("Flip ↕", self._flip_ud, "Wells must be at the top")):
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(fn)
+            row.addWidget(b)
+        f.addLayout(row)
         orient = QWidget()
         ol = QVBoxLayout(orient)
         ol.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        for txt, fn in (("Rotate 90°", self._rot90), ("Flip ↔", self._flip_lr),
-                        ("Flip ↕", self._flip_ud)):
-            b = QPushButton(txt)
-            b.clicked.connect(fn)
-            row.addWidget(b)
-        ol.addLayout(row)
         row = QHBoxLayout()
         self.chk_invert = QCheckBox("dark bands (Coomassie)")
         self.chk_invert.toggled.connect(self._invert_toggled)
@@ -714,13 +717,15 @@ class AutogelWidget(QWidget):
         self.ga.log = log + self.ga.log[1:]
 
     def _rot90(self):
-        self._reorient(lambda o: o.update(rot90_k=(o.get("rot90_k", 0) + 1) % 4))
+        # the skew was measured in the old orientation: estimate it again (angle=None)
+        self._reorient(lambda o: o.update(rot90_k=(o.get("rot90_k", 0) + 1) % 4, angle=None))
 
     def _flip_lr(self):
-        self._reorient(lambda o: o.update(flip_lr=not o.get("flip_lr", False)))
+        # mirroring reverses the tilt
+        self._reorient(lambda o: o.update(flip_lr=not o.get("flip_lr", False), angle=-(o.get("angle") or 0.0)))
 
     def _flip_ud(self):
-        self._reorient(lambda o: o.update(flip_ud=not o.get("flip_ud", False)))
+        self._reorient(lambda o: o.update(flip_ud=not o.get("flip_ud", False), angle=-(o.get("angle") or 0.0)))
 
     def _angle_changed(self):
         if self.ga and abs(self.sp_angle.value() - self.ga.gel.orientation.get("angle", 0)) > 1e-6:

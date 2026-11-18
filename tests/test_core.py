@@ -327,3 +327,40 @@ def test_size_range_limits_calibration_and_flags(gel):
     ga.set_size_range(9000, 9500)          # < 2 ladder bands inside -> warning, range ignored
     ga.quantify()
     assert any("fewer than 2" in w for c in ga.calibrations for w in c.warnings)
+
+
+@pytest.mark.parametrize("rot", [0, 1])
+def test_orientation_overrules_smear_fooled_band_shape(tmp_path, monkeypatch, rot):
+    """Heavily smeared lanes make band blobs look tall (band-shape vote says 'rotate'); the
+    well row and the lane comb must keep the decision right, as on the real benchmark gels."""
+    import autogel.imageio as io
+    path = make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes(), rot90=rot)
+    a = np.asarray(tifffile.imread(path))
+    truth = io.detect_orientation(a)["rot90_k"] % 2
+    assert truth == rot % 2
+    monkeypatch.setattr(io, "lanes_vertical_vote", lambda s: 0.3)   # smear-fooled, says "turn 90°"
+    o = io.detect_orientation(a)
+    assert o["rot90_k"] % 2 == rot % 2
+    assert o["vertical_cues"]["band_shape"] == pytest.approx(-0.2)
+
+
+def test_uncertain_orientation_warns(tmp_path, monkeypatch):
+    import autogel.imageio as io
+    path = make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes())
+    real = io.detect_orientation
+    monkeypatch.setattr(io, "detect_orientation", lambda a, inv=None: {**real(a, inv), "vertical_score": 0.02})
+    assert any("Lane direction uncertain" in w for w in io.load_gel(path).warnings)
+    # an orientation given by the user (Rotate 90°, saved session) is not questioned
+    o = real(np.asarray(tifffile.imread(path)))
+    assert not any("uncertain" in w for w in io.load_gel(path, orientation=o).warnings)
+
+
+def test_skew_reestimated_after_manual_rotation(tmp_path):
+    """Rotate 90° in the GUI sets angle=None: the skew is measured again in the new frame,
+    not carried over from the wrong one."""
+    from autogel.imageio import load_gel
+    path = make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes(), rot90=1)
+    auto = load_gel(path).orientation
+    g = load_gel(path, orientation={**auto, "rot90_k": (auto["rot90_k"] + 2) % 4, "angle": None})
+    assert isinstance(g.orientation["angle"], float) and abs(g.orientation["angle"]) <= 3.0
+    assert not any("uncertain" in w for w in g.warnings)

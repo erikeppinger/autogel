@@ -75,6 +75,11 @@ def test_mode_switch_hides_expert_controls_and_persists(ui):
     assert QSettings("autogel", "autogel").value("mode") == "expert"
     w.btn_easy.setChecked(True)
     assert not w.sp_snr.isVisibleTo(w)
+    # a wrong automatic orientation must be fixable in Easy mode too
+    from qtpy.QtWidgets import QPushButton
+    btns = {b.text(): b for b in w.findChildren(QPushButton)}
+    assert all(btns[t].isVisibleTo(w) for t in ("Rotate 90°", "Flip ↔", "Flip ↕"))
+    assert not w.sp_angle.isVisibleTo(w) and not w.chk_invert.isVisibleTo(w)
 
 
 def test_status_line_and_log_panel(ui):
@@ -102,6 +107,24 @@ def test_rotate_and_flips(ui):
     w._rot90()
     assert w.ga.data.shape == a0.shape[::-1] and w.ga.gel.orientation["rot90_k"] % 4 != 0
     assert any(e["step"] == "orientation_change" for e in w.ga.log)
+
+
+def test_flip_reverses_skew(ui):
+    """A mirrored image tilts the other way: Flip must negate the skew, not keep it (a 2.5°
+    tilted gel was left 5° crooked before 0.3.1)."""
+    w, v, msgs, tmp = ui
+    from .gallery import SCENARIOS, render
+    path, _ = render({s.name: s for s in SCENARIOS}["agarose_tilted"], str(tmp))
+    w.open_image(path)
+    ang = w.ga.gel.orientation["angle"]
+    assert abs(ang) > 1
+    w._flip_lr()
+    assert w.ga.gel.orientation["angle"] == pytest.approx(-ang)
+    assert w.sp_angle.value() == pytest.approx(-ang)
+    w._flip_ud()
+    assert w.ga.gel.orientation["angle"] == pytest.approx(ang)
+    w._rot90()                                  # rotation keeps the tilt, re-measured
+    assert w.ga.gel.orientation["angle"] == pytest.approx(ang, abs=0.3)
 
 
 def test_invert_and_skew(ui):
