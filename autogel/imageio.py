@@ -22,18 +22,33 @@ class GelImage:
     channels: list[np.ndarray] = field(default_factory=list)
     channel_masks: list[np.ndarray] = field(default_factory=list)
     channel_names: list[str] = field(default_factory=list)
-    raw_shape: tuple = ()
+    raw_shape: tuple = ()                 # size of the file's image (before any reduction)
+    reduced: int = 1                      # pixels were averaged in reduced x reduced blocks
 
 
 def _read(path: str) -> np.ndarray:
     ext = os.path.splitext(path)[1].lower()
     if ext in (".tif", ".tiff"):
         import tifffile
-        arr = tifffile.imread(path)
+        with tifffile.TiffFile(path) as tf:
+            cmyk = tf.pages[0].photometric == tifffile.PHOTOMETRIC.SEPARATED
+        if not cmyk:
+            return np.asarray(tifffile.imread(path))
     else:
-        from skimage import io
-        arr = io.imread(path)
-    return np.asarray(arr)
+        from PIL import Image
+        try:
+            with Image.open(path) as im:
+                cmyk = im.mode == "CMYK"
+        except Exception:
+            cmyk = False
+        if not cmyk:
+            from skimage import io
+            return np.asarray(io.imread(path))
+    # print-colour (CMYK) images, e.g. figure files from journals: ink values are not light values
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(path) as im:
+        return np.asarray(im.convert("RGB"))
 
 
 def load_channels(path: str) -> tuple[list[np.ndarray], list[str], str]:
@@ -118,6 +133,25 @@ def saturation_level(arr: np.ndarray) -> tuple[float, str]:
 def _block_mean(a: np.ndarray, f: int) -> np.ndarray:
     h, w = (a.shape[0] // f) * f, (a.shape[1] // f) * f
     return a[:h, :w].reshape(h // f, f, w // f, f).mean((1, 3))
+
+
+MAX_MEGAPIXELS = 25.0   # larger images are reduced on loading (RAM: ~50 MB per megapixel)
+
+
+def reduction_factor(shape: tuple) -> int:
+    px = float(shape[0]) * float(shape[1])
+    return max(1, int(np.ceil(np.sqrt(px / (MAX_MEGAPIXELS * 1e6)))))
+
+
+def reduce(arr: np.ndarray, f: int) -> np.ndarray:
+    """Average f x f pixel blocks (keeps the data type; every band shrinks by the same factor,
+    so relative quantification is unchanged)."""
+    if f <= 1:
+        return arr
+    m = _block_mean(arr.astype(np.float32), f)
+    if np.issubdtype(arr.dtype, np.integer):
+        m = np.rint(m)
+    return m.astype(arr.dtype)
 
 
 def _periodicity(profile: np.ndarray) -> float:
@@ -310,6 +344,13 @@ def load_gel(path: str, orientation: dict | None = None, invert: bool | None = N
     """Load an image and orient it. ``orientation`` (from a saved session) skips auto-detection."""
     arr, warnings, dtype = load_raw(path)
     chans, names, _ = load_channels(path)
+    raw_shape = tuple(arr.shape)
+    f = reduction_factor(arr.shape)
+    if f > 1:                             # e.g. 100-megapixel figure scans: several GB of RAM otherwise
+        arr = reduce(arr, f)
+        chans = [reduce(c, f) for c in chans]
+        warnings.append(f"Very large image ({raw_shape[1]}x{raw_shape[0]} px): analysed at 1/{f} resolution "
+                        f"({arr.shape[1]}x{arr.shape[0]} px) to limit memory use; relative values are unaffected.")
     sat, sat_note = saturation_level(arr)
     sat_mask = arr >= sat
     o = dict(orientation) if orientation else detect_orientation(arr, invert)
@@ -333,7 +374,7 @@ def load_gel(path: str, orientation: dict | None = None, invert: bool | None = N
         warnings.append(f"{n_sat} saturated pixels (level: {sat_note}). "
                         "Bands containing them are flagged and their intensity is underestimated.")
     g = GelImage(data=data, raw_max=mask, path=path, dtype=dtype,
-                 saturation_level=sat, warnings=warnings, orientation=o, raw_shape=tuple(arr.shape))
+                 saturation_level=sat, warnings=warnings, orientation=o, raw_shape=raw_shape, reduced=f)
     if len(chans) > 1:
         for c, n in zip(chans, names):
             d, m = orient_channel(c, o, bool(o["invert"]))

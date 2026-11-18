@@ -1,0 +1,623 @@
+{
+ "about": "CC-BY open-access articles with raw gel/blot images (autogel test set)",
+ "updated": "2026-11-19",
+ "articles": [
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pbio.3003534",
+   "doi": "10.1371/journal.pbio.3003534",
+   "title": "The suprachiasmatic nucleus regulates brown fat thermogenesis in male mice through an adrenergic receptor ADRB3-S100B signaling pathway",
+   "journal": "PLOS Biology",
+   "date": "2025-12-04",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "data",
+     "name": "journal.pbio.3003534.s013",
+     "caption": "Numerical values underlying all graphs in the main body and supporting information. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosbiology/article/file?id=10.1371/journal.pbio.3003534.s013&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pbio.3003534.s014",
+     "caption": "Uncropped version of all Western Blot images in the main body and supporting information. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosbiology/article/file?id=10.1371/journal.pbio.3003534.s014&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0258856",
+   "doi": "10.1371/journal.pone.0258856",
+   "title": "Klotho deficiency intensifies hypoxia-induced expression of IFN-α/β through upregulation of RIG-I in kidneys",
+   "journal": "PLOS ONE",
+   "date": "2021-10-21",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s003",
+     "caption": "Raw images of western blots for Fig 1A. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s003&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s004",
+     "caption": "Raw images of western blots for Fig 1B. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s004&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s005",
+     "caption": "Raw images of western blots for Fig 1C. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s005&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s006",
+     "caption": "Raw images of western blots for Fig 2A–2C. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s006&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s007",
+     "caption": "Raw images of western blots for Figs 4A, 5A, 6A and 7A. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s007&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0258856.s008",
+     "caption": "Raw images of western blots for S1 and S2 Figs. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0258856.s008&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0243715",
+   "doi": "10.1371/journal.pone.0243715",
+   "title": "The role of the MAD2-TLR4-MyD88 axis in paclitaxel resistance in ovarian cancer",
+   "journal": "PLOS ONE",
+   "date": "2020-12-28",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0243715.s003",
+     "caption": "Uncropped western blots from A2780 and SKOV-3 cells. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0243715.s003&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0250394",
+   "doi": "10.1371/journal.pone.0250394",
+   "title": "Alkaloid and acetogenin-rich fraction from <i>Annona crassiflora</i> fruit peel inhibits proliferation and migration of human liver cancer HepG2 cells",
+   "journal": "PLOS ONE",
+   "date": "2021-07-08",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0250394.s001",
+     "caption": "Western blot gels. Six samples of each treatment group were evenly distributed in two gels resulting in 3 samples/gel/group. It was necessary to crop the membranes in order to incubate them with different antibodies since different proteins were analyzed in each western blot. Vinculin (124 kDa MW), ",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0250394.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0265774",
+   "doi": "10.1371/journal.pone.0265774",
+   "title": "A Factor H-Fc fusion protein increases complement-mediated opsonophagocytosis and killing of community associated methicillin-resistant <i>Staphylococcus aureus</i>",
+   "journal": "PLOS ONE",
+   "date": "2022-03-24",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0265774.s002",
+     "caption": "(DOCX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0265774.s002&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0311050",
+   "doi": "10.1371/journal.pone.0311050",
+   "title": "The mouse gingiva and HIF-1α, a key gene of hypoxic environment, as tools for post-mortem time estimation",
+   "journal": "PLOS ONE",
+   "date": "2024-11-15",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0311050.s001",
+     "caption": "Raw images of blots gel. Gels used for densitometry analyses and as control. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0311050.s001&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pone.0311050.s004",
+     "caption": "Minimal data set. Tables of all the data used for statistical analysis in qPCR, densitometry and mean fluorescence intensity. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0311050.s004&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0242970",
+   "doi": "10.1371/journal.pone.0242970",
+   "title": "Chronic IL-1 exposure drives LNCaP cells to evolve androgen and AR independence",
+   "journal": "PLOS ONE",
+   "date": "2020-12-16",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0242970.s005",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0242970.s005&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "western",
+   "id": "journal.pone.0230400",
+   "doi": "10.1371/journal.pone.0230400",
+   "title": "Calcium-binding proteins are altered in the cerebellum in schizophrenia",
+   "journal": "PLOS ONE",
+   "date": "2020-07-08",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0230400.s003",
+     "caption": "Validation analysis of hit candidate proteins by immunoblot in Cohort I. Protein extracts from samples of the post-mortem cerebellum of non-psychiatric control (C, n = 7), schizophrenia (SZ, n = 7) and non-schizophrenia suicide (n = 6) subjects (Table 1, Cohort I) were analysed by immunoblot for VPP",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0230400.s003&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0230400.s004",
+     "caption": "Validation analysis of hit candidate proteins by immunoblot in Cohort II. Protein extracts from samples of the post-mortem cerebellum of non-psychiatric control (C, n = 14) and schizophrenia (SZ, n = 13) subjects (Table 1, Cohort II) were analysed by immunoblot for VPP1, PRVA, CaM and GAPDH and quan",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0230400.s004&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pone.0230400.s006",
+     "caption": "List of reliably quantified proteins in the cerebellum in schizophrenia. (Probability >90%). (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0230400.s006&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0344092",
+   "doi": "10.1371/journal.pone.0344092",
+   "title": "Borax-based gel electrophoresis: A novel approach for RNA integrity analysis",
+   "journal": "PLOS One",
+   "date": "2026-02-27",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0344092.s002",
+     "caption": "Raw images. Original uncropped and unadjusted blot/gel images. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0344092.s002&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0349088",
+   "doi": "10.1371/journal.pone.0349088",
+   "title": "Optimizing an ethanol-based fixative for enhanced nucleic acid preservation in cervical samples using a central composite design approach",
+   "journal": "PLOS One",
+   "date": "2026-06-26",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "data",
+     "name": "journal.pone.0349088.s001",
+     "caption": "Response values for designed experiments per two blocks. 48 experimental Runs plus two basal conditions. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s001&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pone.0349088.s003",
+     "caption": "qPCR amplification of E6 and E7 mRNA. Data for all three replicates is provided. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s003&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s005",
+     "caption": "Raw images of main body gels. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s005&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s010",
+     "caption": "Raw gel image corresponding to Fig 1. The upper lanes are cropped out and reported in manuscript Fig 1. The lower lanes represent (left to right): 1- basal solution with no polyol compounds 2-addition of 2% PEG 3-addition of 2% Sorbitol 4- addition of 1% Sorbitol and 1% PEG. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s010&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s011",
+     "caption": "Raw gel image corresponding to Fig 2. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s011&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s012",
+     "caption": "Raw gel image corresponding to Fig 4. The five right lanes from the top row were cropped and presented in Fig 4. The remaining lanes represent genomic DNA from the experimental runs within the design space. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s012&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s013",
+     "caption": "Raw gel image corresponding to Fig 5. The five right-most lanes were cropped and presented in Fig 5, while the remaining lanes are not related to this study. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s013&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s014",
+     "caption": "Raw gel image corresponding to Fig 5. The top row was cropped and presented in Fig 5, while the bottom row shows the E6–E7 oncogenes of HPV, yielding a product size of 906 bp for the experimental runs within the design space. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s014&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0349088.s015",
+     "caption": "Raw gel image corresponding to Fig 6. (TIF)",
+     "mimetype": "image/tiff",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0349088.s015&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0278780",
+   "doi": "10.1371/journal.pone.0278780",
+   "title": "Addressing the quality challenge of a human biospecimen biobank through the creation of a quality management system",
+   "journal": "PLOS ONE",
+   "date": "2022-12-30",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0278780.s001",
+     "caption": "Raw image of Fig 1. (A) Electrophoresis of increasing amounts of DNA after extraction from PAXgene tube. (B) Electrophoresis of DNA after extraction and storage at -80°C. The year in which the extraction is carried out is indicated. MM: molecular markers. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0278780.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0314013",
+   "doi": "10.1371/journal.pone.0314013",
+   "title": "RNA quality and protamine gene expression after storage of mouse testes under different conditions",
+   "journal": "PLOS ONE",
+   "date": "2024-11-21",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "data",
+     "name": "journal.pone.0314013.s012",
+     "caption": "Table 1. Raw data table from the RNA quality analysis of testes and liver samples, preserved in RNAlater® or NAP buffer at -80°C for 24 hours. Table 2. Raw data table from the RNA quality analysis of testes samples, preserved in RNAlater® or NAP buffer at RT, 24 hours (time 0) or 7 days. Table 3. Ra",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0314013.s012&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pone.0314013.s013",
+     "caption": "Table 1. Raw data table from the RNA quality analysis of testes samples, preserved in RNAlater® at different temperatures for up to 365 days. Table 2. Raw data table from the protamine expression analysis of testes samples, preserved in RNAlater® at different temperatures for up to 365 days. Table 3",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0314013.s013&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pone.0314013.s014",
+     "caption": "Table 1. Raw data table from the RNA quality analysis of testes samples snap-frozen and stored at -80°C or in LN2 for up to 365 days. Table 2. Raw data table from the protamine expression analysis of testes samples snap-frozen and stored at -80°C or in LN2 for up to 365 days. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0314013.s014&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0314013.s015",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0314013.s015&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0291949",
+   "doi": "10.1371/journal.pone.0291949",
+   "title": "Development of modified CTAB and Trizol protocols to isolate high molecular weight (HMW) RNA from polyphenol and polysaccharides rich pigeonpea (<i>Cajanuscajan</i> (L.) Millsp",
+   "journal": "PLOS ONE",
+   "date": "2023-12-08",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0291949.s001",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0291949.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0240769",
+   "doi": "10.1371/journal.pone.0240769",
+   "title": "Glyoxal fixation facilitates transcriptome analysis after antigen staining and cell sorting by flow cytometry",
+   "journal": "PLOS ONE",
+   "date": "2021-01-22",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0240769.s001",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0240769.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pbio.3003821",
+   "doi": "10.1371/journal.pbio.3003821",
+   "title": "Adiponectin exerts sex-dependent effects on lipid, amino acid, and glucose metabolism during caloric restriction",
+   "journal": "PLOS Biology",
+   "date": "2026-06-18",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pbio.3003821.s019",
+     "caption": "Raw images for western blots used in Figs 1B, S1D, and S4A. The blots for Fig 1B (plasma adiponectin and total protein) were captured using a LiCor Odyssey CLx scanner, whereas those for S1B and S4A Figs were captured using a LiCor Odyssey M scanner. For S1B and S4A Figs, most membranes were cut bef",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosbiology/article/file?id=10.1371/journal.pbio.3003821.s019&type=supplementary"
+    },
+    {
+     "kind": "data",
+     "name": "journal.pbio.3003821.s020",
+     "caption": "Raw Data underlying Figs 1A, 1C–1E, 2A–2F, 3A–3D, 3F, 3G, 4A–4F, 5A–5H, S1B, S1C, S1E, S2A–S2C, S3A, S4B, S5A, S5B, S6A, S6B, S6D, S7A–S7D, S8A–S8D, S9A–S9D, S10A, and S11A–S11G and S1–S3 Tables. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosbiology/article/file?id=10.1371/journal.pbio.3003821.s020&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "rna",
+   "id": "journal.pone.0358130",
+   "doi": "10.1371/journal.pone.0358130",
+   "title": "Integrative transcriptomics identifies an 18-gene candidate blood-accessible biomarker panel for longitudinal monitoring of spaceflight-induced muscle atrophy",
+   "journal": "PLOS One",
+   "date": "2026-10-07",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "data",
+     "name": "journal.pone.0358130.s002",
+     "caption": "Supplementary tables S1–S19. Multi-sheet workbook containing the complete ICS values for all 103 intersection genes (Table S2), gene-level meta-analysis effect sizes and cross-mission validation statistics (Table S4), the drug–gene interaction network database (Table S6), Bliss synergy scores for pa",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0358130.s002&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0358130.s003",
+     "caption": "Raw, uncropped scans of all western blot membranes underlying the figures, compiled as a single PDF (cover page plus one image per membrane, Raw Images R1–R5), provided as Supporting Information per the editorial request. Each image is labelled with the experiment, antibody targets, image-capture me",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0358130.s003&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0237655",
+   "doi": "10.1371/journal.pone.0237655",
+   "title": "Development and evaluation of loop-mediated isothermal amplification for detection of <i>Yersinia pestis</i> in plague biological samples",
+   "journal": "PLOS ONE",
+   "date": "2020-08-18",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0237655.s003",
+     "caption": "Original images supporting Fig 1(B), Fig 2(A), Fig 2(B), Fig 3, Fig 4(B), Fig 4(C) and Fig 5(B). (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0237655.s003&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0228123",
+   "doi": "10.1371/journal.pone.0228123",
+   "title": "Rapid detection of pecan root-knot nematode, <i>Meloidogyne partityla</i>, in laboratory and field conditions using loop-mediated isothermal amplification",
+   "journal": "PLOS ONE",
+   "date": "2020-06-18",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0228123.s005",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0228123.s005&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0308179",
+   "doi": "10.1371/journal.pone.0308179",
+   "title": "A rapid and easy-to-use spinal muscular atrophy screening tool based on primers with high specificity and amplification efficiency for <i>SMN1</i> combined with single-stranded tag hybridization assay",
+   "journal": "PLOS ONE",
+   "date": "2024-08-01",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "data",
+     "name": "journal.pone.0308179.s003",
+     "caption": "Data for all primers newly designed and evaluated in this study. Sequence information, target bases, SMN1 specificity, and Ct values against the control gene are shown for all primers. (XLSX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0308179.s003&type=supplementary"
+    },
+    {
+     "kind": "raw",
+     "name": "journal.pone.0308179.s004",
+     "caption": "All raw gel images in this study. All raw gel images in the main and supplemental figures of the manuscript are shown, with the loading order, the identity of the experimental samples, and the method used to capture the images. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0308179.s004&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0266775",
+   "doi": "10.1371/journal.pone.0266775",
+   "title": "Rapid identification and quantitation of single plant seed allergen using paper-based microfluidics",
+   "journal": "PLOS ONE",
+   "date": "2022-12-12",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0266775.s001",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0266775.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0254029",
+   "doi": "10.1371/journal.pone.0254029",
+   "title": "Rapid and simultaneous detection of <i>Campylobacter</i> spp. and <i>Salmonella</i> spp. in chicken samples by duplex loop-mediated isothermal amplification coupled with a lateral flow biosensor assay",
+   "journal": "PLOS ONE",
+   "date": "2021-07-01",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0254029.s009",
+     "caption": "Original photographs of Figs 2A and S2, S3 and S4. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0254029.s009&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0318708",
+   "doi": "10.1371/journal.pone.0318708",
+   "title": "A highly cost-effective, eco-friendly tissue lysis and extraction method for faster DNA isolation from fish fin",
+   "journal": "PLOS ONE",
+   "date": "2025-02-18",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0318708.s003",
+     "caption": "Original uncropped gel images. Original uncropped raw images of the electrophoretogram documented right after the experimentation. (DOCX)",
+     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0318708.s003&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0360555",
+   "doi": "10.1371/journal.pone.0360555",
+   "title": "Development of loop-mediated isothermal amplification (LAMP) combined with a lateral flow dipstick DNA biosensor for detection of α thalassemia 1 [Southeast Asia (SEA), <sup>--SEA</sup> deletion]",
+   "journal": "PLOS One",
+   "date": "2026-10-12",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0360555.s001",
+     "caption": "Raw images. (PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0360555.s001&type=supplementary"
+    }
+   ]
+  },
+  {
+   "source": "plos",
+   "kind": "dna",
+   "id": "journal.pone.0235853",
+   "doi": "10.1371/journal.pone.0235853",
+   "title": "An efficient ORF selection system for DNA fragment libraries based on split beta-lactamase complementation",
+   "journal": "PLOS ONE",
+   "date": "2020-07-23",
+   "license": "http://creativecommons.org/licenses/by/4.0/",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "journal.pone.0235853.s011",
+     "caption": "(PDF)",
+     "mimetype": "application/pdf",
+     "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0235853.s011&type=supplementary"
+    }
+   ]
+  }
+ ]
+}

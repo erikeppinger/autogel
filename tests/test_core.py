@@ -478,3 +478,44 @@ def test_curved_lanes_traced_straight_lanes_left_alone(tmp_path):
     gc = GelAnalysis(p, Params(n_lanes=12))
     gc.detect_lanes()
     assert not any(l.bend for l in gc.lanes)
+
+
+@pytest.mark.parametrize("ext", [".tif", ".jpg"])
+def test_cmyk_image_read_as_light_not_ink(tmp_path, ext):
+    """Journal figure files are often CMYK; reading the ink channels as RGB inverted the image."""
+    from PIL import Image
+
+    from autogel.imageio import load_raw
+    path = make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes(), dtype=np.uint8, gradient=0, bg=20, noise=2)
+    rgb = Image.open(path).convert("RGB")
+    out = str(tmp_path / f"cmyk{ext}")
+    rgb.convert("CMYK").save(out)
+    assert Image.open(out).mode == "CMYK"
+    a, _, _ = load_raw(out)
+    ref = np.asarray(rgb.convert("L"), float)
+    assert np.corrcoef(np.asarray(a, float).ravel(), ref.ravel())[0, 1] > 0.95
+
+
+def test_very_large_image_is_reduced(tmp_path):
+    """~36 MP image: analysed at 1/2 resolution (memory), relative volumes unchanged."""
+    from autogel.imageio import MAX_MEGAPIXELS
+    small = make_gel(str(tmp_path / "s.tif"), lanes=standard_lanes(), noise=10)
+    a = tifffile.imread(small)
+    big = str(tmp_path / "big.tif")
+    tifffile.imwrite(big, np.kron(a, np.ones((5, 5), a.dtype)))      # 6000 x 5000 = 30 MP
+    assert a.size * 25 / 1e6 > MAX_MEGAPIXELS
+    ga = GelAnalysis(big, Params(n_lanes=10))
+    assert ga.gel.reduced == 2 and ga.data.shape == (3000, 2500)
+    assert any("Very large image" in w for w in ga.gel.warnings)
+    ga.detect_lanes()
+    ga.detect_bands()
+    df = ga.quantify()
+    ref = run(small, n_lanes=10).quantify()
+    for k in (3, 5):
+        r_big = df[df.lane == k].sort_values("y_px").volume.to_numpy()
+        r_ref = ref[ref.lane == k].sort_values("y_px").volume.to_numpy()
+        assert len(r_big) == len(r_ref) == 2
+        assert r_big[0] / r_big[1] == pytest.approx(r_ref[0] / r_ref[1], rel=0.05)
+    # an added image of the same (full) size is reduced the same way
+    k = ga.add_image(big, name="copy")
+    assert ga.gel.channels[k].shape == ga.data.shape

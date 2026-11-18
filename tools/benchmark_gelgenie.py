@@ -115,10 +115,13 @@ def evaluate(img: str, mask_path: str, layout: bool = True) -> dict:
     # run vertically. If autogel's 90-degree decision is wrong, record it and continue with the
     # corrected orientation - the user would click "Rotate 90" once.
     raw_regions = components(np.asarray(mask_raw))
-    wide = sum(r.area for r in raw_regions if (r.bbox[3] - r.bbox[1]) > (r.bbox[2] - r.bbox[0]))
-    tall = sum(r.area for r in raw_regions if (r.bbox[2] - r.bbox[0]) > (r.bbox[3] - r.bbox[1]))
+    # count outlines (not area: a few big round blobs or a merged ladder outline decided it before)
+    # and only call it with a clear majority; otherwise autogel's decision is not judged
+    wide = sum(1 for r in raw_regions if (r.bbox[3] - r.bbox[1]) > 1.3 * (r.bbox[2] - r.bbox[0]))
+    tall = sum(1 for r in raw_regions if (r.bbox[2] - r.bbox[0]) > 1.3 * (r.bbox[3] - r.bbox[1]))
+    clear = max(wide, tall) >= 2 * min(wide, tall) and max(wide, tall) >= 5
     need_k_odd = tall > wide            # lanes horizontal in the original image
-    orientation_error = (o0.get("rot90_k", 0) % 2 == 1) != need_k_odd
+    orientation_error = clear and (o0.get("rot90_k", 0) % 2 == 1) != need_k_odd
     if orientation_error:
         o0 = {**o0, "rot90_k": (o0.get("rot90_k", 0) + 1) % 4, "angle": None}
     m0 = apply_orientation((np.asarray(mask_raw) > 0).astype(np.float32), {**o0, "invert": False}, order=0) > 0.5

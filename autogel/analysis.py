@@ -16,7 +16,7 @@ import pandas as pd
 from scipy import ndimage, signal
 
 from . import __version__
-from .imageio import GelImage, _combine, auto_invert, load_channels, load_gel, orient_channel
+from .imageio import GelImage, _combine, auto_invert, load_channels, load_gel, orient_channel, reduce
 from .markers import PRESETS, MarkerCalibration, assign_marker
 
 # shoulder splitting (Params.split_shoulders): the smaller part must carry at least this share of the
@@ -243,6 +243,7 @@ class GelAnalysis:
             raise ValueError(f"{os.path.basename(e['path'])} is {raw.shape[1]}x{raw.shape[0]} px but the gel image "
                              f"is {self.gel.raw_shape[1]}x{self.gel.raw_shape[0]} px - both must come from the "
                              "same camera position without cropping.")
+        raw = reduce(raw, self.gel.reduced)            # same reduction as the gel image
         inv = auto_invert(raw) if e.get("invert") is None else bool(e["invert"])
         e["invert"] = inv
         if not self.gel.channels:            # plain grey gel so far: it becomes channel 1
