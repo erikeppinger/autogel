@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autogel"
+version = "0.1.0"
+description = "Automatic lane/band detection and quantification for agarose and SDS gels, with a napari editor"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy", "scipy", "scikit-image", "pandas", "tifffile", "imagecodecs",
+    "matplotlib", "openpyxl",
+]
+
+[project.optional-dependencies]
+gui = ["napari[pyqt6]>=0.5", "qtpy"]
+dev = ["pytest"]
+
+[project.scripts]
+autogel = "autogel.cli:main"
+
+[project.entry-points."napari.manifest"]
+autogel = "autogel:napari.yaml"
+
+[tool.setuptools.packages.find]
+include = ["autogel*"]
+
+[tool.setuptools.package-data]
+autogel = ["napari.yaml", "ladders.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP", "SIM"]
+ignore = ["E741", "SIM108", "B905"]  # zip strictness: lengths are paired by construction

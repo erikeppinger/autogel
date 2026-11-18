@@ -1,0 +1,10 @@
+name: autogel
+display_name: autogel
+contributions:
+  commands:
+    - id: autogel.widget
+      python_name: autogel.napari_widget:AutogelWidget
+      title: Gel lanes & bands
+  widgets:
+    - command: autogel.widget
+      display_name: Gel lanes & bands
