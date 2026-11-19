@@ -618,6 +618,1086 @@
      "url": "https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0235853.s011&type=supplementary"
     }
    ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13725251",
+   "doi": "10.1111/pce.70879",
+   "title": "A Three Amino Acid Sequence Gates Protein Stability Control of bHLH104 and Iron Uptake in Arabidopsis thaliana.",
+   "journal": "Plant, cell & environment",
+   "date": "2026-09-22",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "PCE-49-10421-s016.TIF",
+     "caption": "Figure S23: Original blots for Figure 4B. Red arrows indicate the expected band position for the mTurquoise2‐bHLH104 fusion protein."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13754279",
+   "doi": "10.7554/elife.109761",
+   "title": "Engineering ATP import in yeast uncovers a synthetic route to extend cellular lifespan.",
+   "journal": "eLife",
+   "date": "2026-11-11",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-109761-fig4-data1.zip",
+     "caption": "PDF file containing original western blots for Figure 4A, B, indicating the relevant bands and treatments."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109761-supp1.xlsx",
+     "caption": "Raw data for ATP, ADP, and AMP measurements obtained using the QUEEN reporter and LC–MS/MS."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109761-supp2.xlsx",
+     "caption": "Raw RNA-seq counts and FPKM values, along with log2 fold-change values."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13750796",
+   "doi": "10.7554/elife.110991",
+   "title": "Molidustat targets a synthetic lethal vulnerability in APC-mutant colorectal cancer through GSTP1 and PHD2 co-inhibition.",
+   "journal": "eLife",
+   "date": "2026-11-10",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig1-data1.zip",
+     "caption": "PDF file containing the original, uncropped western blots for Figure 1C, with the relevant bands and molecular weight markers labelled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig1-data2.zip",
+     "caption": "Original image files for the western blot analysis displayed in Figure 1C."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig1-figsupp1-data1.zip",
+     "caption": "PDF file containing the original, uncropped western blots for Figure 1—figure supplement 1A and B, with the relevant bands and molecular weight markers labelled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig1-figsupp1-data2.zip",
+     "caption": "Original image files for the western blot analyses displayed in Figure 1—figure supplement 1A and B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig3-data1.zip",
+     "caption": "PDF file containing the original, uncropped western blots for Figure 3B, C, and D, with the relevant bands and molecular weight markers labelled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-110991-fig3-data2.zip",
+     "caption": "Original image files for the western blot analyses displayed in Figure 3B, C, and D."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13743076",
+   "doi": "10.7554/elife.105192",
+   "title": "Spatial confinement induces oscillatory migration of epidermal keratinocytes and forms a three-compartment epithelial structure with epithelial-mesenchymal transition dynamics.",
+   "journal": "eLife",
+   "date": "2026-11-06",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-105192-fig4-figsupp1-data2.zip",
+     "caption": "PDF files containing original western blots for Figure 4—figure supplement 1f and h, indicating the relevant bands."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105192-data1.xlsx",
+     "caption": "Numerical source data for all graphs.Values plotted in Figure 1f, g; Figure 2h; Figure 3a–f; Figure 4a–f, l, m; Figure 1—figure supplement 1a–d; Figure 2—figure supplement 1d; and Figure 4—figure supplement 1e, g. Each worksheet is named after the corresponding panel. For the chemical treatment and "
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13741394",
+   "doi": "10.1111/acel.70805",
+   "title": "Constitutive Activation of Skeletal Muscle mTORC1 Drives Pro-Inflammatory Gene Expression in Skeletal Muscle of Aged Mice.",
+   "journal": "Aging cell",
+   "date": "2026-11-01",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "ACEL-25-e70805-s001.zip",
+     "caption": "Data S1: Supplementary figures 1–3, supplementary tables 1–8 and uncropped western blot images."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13739273",
+   "doi": "10.7554/elife.91615",
+   "title": "Gcn5 and mTORC1 mediated regulation of autophagy controls &lt;i&gt;Drosophila&lt;/i&gt; blood cell homeostasis.",
+   "journal": "eLife",
+   "date": "2026-11-05",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-91615-fig7-data2.zip",
+     "caption": "The original files of the full raw uncropped related to Figure 7M and N."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-91615-fig7-data3.zip",
+     "caption": "PPT with the uncropped blots with the relevant bands clearly labeled related to Figure 7M and N."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13720624",
+   "doi": "10.1016/j.isci.2026.118015",
+   "title": "Identification of mitophagy-related genes with diagnostic value in focal segmental glomerulosclerosis using bioinformatics analysis.",
+   "journal": "iScience",
+   "date": "2026-10-23",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "mmc3.pdf",
+     "caption": "Data S1. Uncropped and unedited raw western blot images corresponding to Figure 9D"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13695020",
+   "doi": "10.1111/gtc.70154",
+   "title": "Characterization of the Trimeric TOM Complex by HS-AFM Single-Molecule Analysis.",
+   "journal": "Genes to cells : devoted to molecular & cellular mechanisms",
+   "date": "2026-11-01",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "GTC-31-0-s008.pptx",
+     "caption": "Figure S6: The uncropped version of the membranes, gel and AFM images in Figure 1. Figure S7: The uncropped version of the membranes AFM images in Figure 2. Figure S8: The uncropped version of the membranes in Figure 3. Figure S9: The uncropped version of the AFM images in Figure 4. Figure S10: The "
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13677406",
+   "doi": "10.1016/j.isci.2026.117833",
+   "title": "Targeting BCL11B-mediated JAK2/STAT3 activation: A novel therapeutic strategy for Parkinson's disease.",
+   "journal": "iScience",
+   "date": "2026-10-08",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "mmc2.pdf",
+     "caption": "Data S2. Uncropped western blot images from at least two independent experiments, related to Figures 2, 3, 4, 5, 7, and 8 (included in the Supplemental PDF)"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "western",
+   "id": "PMC13677326",
+   "doi": "10.1016/j.isci.2026.117806",
+   "title": "Box C/D SNORD116-17 promotes prostate cancer progression by targeting the miR-206/E2F5 axis.",
+   "journal": "iScience",
+   "date": "2026-10-08",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "mmc1.pdf",
+     "caption": "Data S1. Raw data-uncropped blots"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "rna",
+   "id": "PMC13309126",
+   "doi": "10.7554/elife.107855",
+   "title": "Deciphering interferon functions in avian influenza using receptor knockout models in the natural host.",
+   "journal": "eLife",
+   "date": "2026-06-26",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-107855-fig1-data1.zip",
+     "caption": "Labeled uncropped gel image for the IFNLR1 PCR genotyping assay shown in Figure 1d, indicating the relevant lanes and expected bands."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107855-fig1-data2.zip",
+     "caption": "Original uncropped gel image file for the IFNLR1 PCR genotyping assay displayed in Figure 1d."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107855-fig2-data1.zip",
+     "caption": "Labeled uncropped western blot and RT-PCR gel images for Figure 2b and d, indicating the relevant lanes, treatments, bands, and molecular weight markers."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107855-fig2-data2.zip",
+     "caption": "Original uncropped image files for the western blot and RT-PCR gel analyses displayed in Figure 2b and d."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "rna",
+   "id": "PMC11875539",
+   "doi": "10.7554/elife.88849",
+   "title": "SIV-specific neutralizing antibody induction following selection of a PI3K drive-attenuated &lt;i&gt;nef&lt;/i&gt; variant.",
+   "journal": "eLife",
+   "date": "2025-03-03",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-88849-fig1-figsupp3-data1.zip",
+     "caption": "PDF file containing original western blots for Figure 1—figure supplement 3, labeling the corresponding viral protein bands and IDs."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-88849-fig4-data1.zip",
+     "caption": "Original western blots for Figure 4E indicating the relevant bands and treatments."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "rna",
+   "id": "PMC11233135",
+   "doi": "10.7554/elife.92621",
+   "title": "Comparative transcriptomics reveal a novel tardigrade-specific DNA-binding protein induced in response to ionizing radiation.",
+   "journal": "eLife",
+   "date": "2024-07-09",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-92621-fig1-data2.pdf",
+     "caption": "Pdf file showing annotated uncropped images used in Figure 1a."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-92621-fig3-data2.pdf",
+     "caption": "Pdf file showing annotated uncropped images used in Figure 3a."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-92621-fig3-figsupp1-data2.pdf",
+     "caption": "Pdf file showing the annotated uncropped images used in Figure 3—figure supplement 1a."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-92621-fig3-figsupp2-data2.pdf",
+     "caption": "Pdf file showing the annotated uncropped images used in Figure 3—figure supplement 2b."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-92621-fig5-data2.pdf",
+     "caption": "Pdf file showing the annotated uncropped images used in in Figure 5b and c."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "rna",
+   "id": "PMC10513481",
+   "doi": "10.7554/elife.81258",
+   "title": "<i>FOXP2</i> confers oncogenic effects in prostate cancer.",
+   "journal": "eLife",
+   "date": "2023-09-05",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-data1.zip",
+     "caption": "Uncropped blot for Figure 1I."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-data2.zip",
+     "caption": "Uncropped blot for Figure 1N."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp1-data1.zip",
+     "caption": "Uncropped gel for Figure 1—figure supplement 1A."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp1-data2.zip",
+     "caption": "Uncropped gel for Figure 1—figure supplement 1B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp1-data3.zip",
+     "caption": "Uncropped blot for Figure 1—figure supplement 1G."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp1-data4.zip",
+     "caption": "Uncropped blot for Figure 1—figure supplement 1K."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp1-data5.zip",
+     "caption": "Uncropped blot for Figure 1—figure supplement 1L."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp2-data1.zip",
+     "caption": "Uncropped blot for Figure 1—figure supplement 2A."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig1-figsupp3-data1.zip",
+     "caption": "Uncropped blot for Figure 1—figure supplement 3B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-data1.zip",
+     "caption": "Uncropped blot for Figure 3A."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-data2.zip",
+     "caption": "Uncropped blot for Figure 3B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-data3.zip",
+     "caption": "Uncropped blot for Figure 3C."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-data4.zip",
+     "caption": "Uncropped blot for Figure 3F."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-data5.zip",
+     "caption": "Uncropped blot for Figure 3G."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-figsupp1-data1.zip",
+     "caption": "Uncropped blot for Figure 3—figure supplement 1A."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-figsupp1-data2.zip",
+     "caption": "Uncropped blot for Figure 3—figure supplement 1B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig3-figsupp1-data3.zip",
+     "caption": "Uncropped gel for Figure 3—figure supplement 1D."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig4-figsupp1-data1.zip",
+     "caption": "Uncropped gel for Figure 4—figure supplement 1C."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-81258-fig4-figsupp1-data2.zip",
+     "caption": "Uncropped blot for Figure 4—figure supplement 1D."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "rna",
+   "id": "PMC9038194",
+   "doi": "10.7554/elife.77704",
+   "title": "Free spermidine evokes superoxide radicals that manifest toxicity.",
+   "journal": "eLife",
+   "date": "2022-04-13",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "data",
+     "name": "elife-77704-fig1-data1.xlsx",
+     "caption": "Figure 1A Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig1-data2.xlsx",
+     "caption": "Figure 1B Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig1-data3.xlsx",
+     "caption": "Figure 1C Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig1-data4.xlsx",
+     "caption": "Figure 1F Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig1-figsupp1-data1.xlsx",
+     "caption": "Figure 1—figure supplement 1C raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig2-data1.xlsx",
+     "caption": "Figure 2 Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig3-data1.xlsx",
+     "caption": "Figure 3A Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig3-data2.xls",
+     "caption": "Figure 3B Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig3-data3.xlsx",
+     "caption": "Figure 3C Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig3-data4.xlsx",
+     "caption": "Figure 3D, E and F Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig3-data5.xlsx",
+     "caption": "Figure 3G Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig4-data1.xlsx",
+     "caption": "Figure 4B–ii Raw data."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data3.zip",
+     "caption": "Figure 4C–i Raw uncropped and labeled image."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data5.zip",
+     "caption": "Figure 4C–ii Raw uncropped and labeled image."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data7.zip",
+     "caption": "Figure 4D–i Raw uncropped and labeled image."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data9.zip",
+     "caption": "Figure 4D–ii Raw uncropped and labeled image."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data11.zip",
+     "caption": "Figure 4E–i Raw uncropped and labeled image."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-77704-fig4-data13.zip",
+     "caption": "Figure 4E–ii Raw uncropped and labeled image."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig4-data14.xlsx",
+     "caption": "Figure 4C, D and E Fold change values of the western blots."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig5-data1.xlsx",
+     "caption": "Figure 5A Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig5-data2.xlsx",
+     "caption": "Figure 5B Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig5-data3.xlsx",
+     "caption": "Figure 5D Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig6-data1.xlsx",
+     "caption": "Figure 6D Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig6-data2.xlsx",
+     "caption": "Figure 6E Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-fig6-data3.xlsx",
+     "caption": "Figure 6G Raw data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-77704-supp1.xlsx",
+     "caption": "Table listing microarray data representing upregulated (green) and downregulated (red) genes."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13368180",
+   "doi": "10.7554/elife.107785",
+   "title": "In silico design and validation of high-affinity RNA aptamers for SARS-CoV-2 comparable to neutralizing antibodies.",
+   "journal": "eLife",
+   "date": "2026-07-14",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig2-data1.pdf",
+     "caption": "PDF showing the original uncropped electrophoretic mobility shift assay (EMSA) gel for Figure 2F, with the aptamer-receptor binding domain (RBD) complex and free aptamer bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig2-data2.zip",
+     "caption": "Original image files for the electrophoretic mobility shift assay (EMSA) gel displayed in Figure 2F."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig3-data1.pdf",
+     "caption": "PDF showing the original uncropped gels for Figure 3D (native-PAGE) and Figure 3E (electrophoretic mobility shift assay [EMSA]), with the relevant bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig3-data2.zip",
+     "caption": "Original image files for the gels displayed in Figure 3D and E."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig4-data1.pdf",
+     "caption": "PDF showing the original uncropped electrophoretic mobility shift assay (EMSA) gel for Figure 4E, with the relevant bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig4-data2.zip",
+     "caption": "Original image files for the electrophoretic mobility shift assay (EMSA) gel displayed in Figure 4E."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig4-figsupp2-data1.pdf",
+     "caption": "PDF showing the original uncropped electrophoretic mobility shift assay (EMSA) gels for the six Ta mutants, with the relevant bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig4-figsupp2-data2.zip",
+     "caption": "Original image files for the EMSA gels."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-data1.pdf",
+     "caption": "PDF showing the original uncropped electrophoretic mobility shift assay (EMSA) gel for Figure 5D, with the relevant bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-data2.zip",
+     "caption": "Original image files for the electrophoretic mobility shift assay (EMSA) gel displayed in Figure 5D."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-figsupp1-data1.pdf",
+     "caption": "PDF showing the original uncropped electrophoretic mobility shift assay (EMSA) gels with BSA as a non-target control, with the relevant bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-figsupp1-data2.zip",
+     "caption": "Original image files for the electrophoretic mobility shift assay (EMSA) gels."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-figsupp2-data1.pdf",
+     "caption": "PDF showing the original uncropped SDS-PAGE gel, with the relevant lanes/bands labeled."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-107785-fig5-figsupp2-data2.zip",
+     "caption": "Original image files for the SDS-PAGE gel."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13167112",
+   "doi": "10.7554/elife.109297",
+   "title": "Endogenous corazonin signaling modulates the post-mating switch in behavior and physiology in females of the brown planthopper and &lt;i&gt;Drosophila&lt;/i&gt;.",
+   "journal": "eLife",
+   "date": "2026-05-12",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "data",
+     "name": "elife-109297-fig1-data1.xlsx",
+     "caption": "Source data for all graphs presented in Figure 1."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig1-figsupp2-data1.xlsx",
+     "caption": "Source data for all graphs presented in Figure 1—figure supplement 2."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig2-data1.zip",
+     "caption": "Original gel image used for Figure 2B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig2-data2.zip",
+     "caption": "Uncropped gel image for Figure 2B, with the relevant bands indicated."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig2-data3.xls",
+     "caption": "Source data for all graphs presented in Figure 2."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig3-data1.xlsx",
+     "caption": "Source data for all graphs presented in Figure 3."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig3-figsupp2-data1.xlsx",
+     "caption": "Source data for all graphs presented in Figure 3—figure supplement 2."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig4-data1.zip",
+     "caption": "Original gel image used for Figure 4B."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig4-data2.zip",
+     "caption": "Uncropped gel image for Figure 4B, with the relevant bands indicated."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig4-data3.xlsx",
+     "caption": "Source data for all graphs presented in Figure 4."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig4-figsupp1-data1.xlsx",
+     "caption": "Source data for all graphs presented in Figure 4—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig5-data1.zip",
+     "caption": "Original gel image used for Figure 5H."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-109297-fig5-data2.zip",
+     "caption": "Uncropped gel image for Figure 5H, with the relevant bands indicated."
+    },
+    {
+     "kind": "data",
+     "name": "elife-109297-fig5-data3.xlsx",
+     "caption": "Source data for all graphs presented in Figure 5."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13092367",
+   "doi": "10.1002/jmr.70035",
+   "title": "RPA Combined With CRISPR/Cas12a for Rapid and Ultrasensitive Detection Dual-Gene of Methicillin-Resistant Staphylococcus aureus (MRSA).",
+   "journal": "Journal of molecular recognition : JMR",
+   "date": "2026-05-01",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "JMR-39-e70035-s001.docx",
+     "caption": "Figure S1: Uncropped gel images of selected RPA primers and optimized amplification conditions. (A) Corresponding to uncropped glue figure in Figure 2A. (B) corresponding to uncropped glue figure in Figure 2B. (C) corresponding to uncropped glue figure in Figure 2C,D."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13004596",
+   "doi": "10.7554/elife.103167",
+   "title": "Competition for the conserved branch point sequence influences physiological outcomes in pre-mRNA splicing.",
+   "journal": "eLife",
+   "date": "2026-03-20",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig2-data2.zip",
+     "caption": "Source data containing original uncropped western blots and BioAnalyzer gel-like images/files."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig2-figsupp1-data1.pdf",
+     "caption": "Original uncropped membrane from western blot and uncropped gel-like image from BioAnalyzer shown in Figure 2—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig2-figsupp1-data2.zip",
+     "caption": "Original uncropped membrane from western blot and uncropped gel-like image from BioAnalyzer shown in Figure 2—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig3-figsupp1-data1.pdf",
+     "caption": "Original uncropped agarose gel images from Figure 3—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig3-figsupp1-data2.zip",
+     "caption": "Original uncropped agarose gel images from Figure 3—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig5-data1.pdf",
+     "caption": "Original gel-like images from BioAnalyzer used in Figure 5D."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig5-data2.zip",
+     "caption": "Original gel-like images and data file from BioAnalyzer used in Figure 5D."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig5-figsupp1-data1.pdf",
+     "caption": "Original uncropped agarose gel images of data shown in Figure 5—figure supplement 1C."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-103167-fig5-figsupp1-data2.zip",
+     "caption": "Original uncropped agarose gel images of data shown in Figure 5—figure supplement 1C."
+    },
+    {
+     "kind": "data",
+     "name": "elife-103167-supp1.xlsx",
+     "caption": "Vast-tools splicing analysis datafile from ENCODE RNA-seq data."
+    },
+    {
+     "kind": "data",
+     "name": "elife-103167-supp2.xlsx",
+     "caption": "rMATS splicing analysis datafile from ENCODE RNA-seq data comparing shQKI to shControl."
+    },
+    {
+     "kind": "data",
+     "name": "elife-103167-supp3.xlsx",
+     "caption": "rMATS splicing analysis datafile from ENCODE RNA-seq data comparing shSF1 to shControl."
+    },
+    {
+     "kind": "data",
+     "name": "elife-103167-supp6.xlsx",
+     "caption": "Transcript abundance analysis of RNA-seq data from BY4741 with QKI5 expression compared to parental control."
+    },
+    {
+     "kind": "data",
+     "name": "elife-103167-supp7.xlsx",
+     "caption": "Splicing analysis of RNA-seq data from BY4741 with QKI5 expression compared to parental control."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC12975125",
+   "doi": "10.7554/elife.105165",
+   "title": "Nup107 is a crucial regulator of torso-mediated metamorphic transition in &lt;i&gt;Drosophila melanogaster&lt;/i&gt;.",
+   "journal": "eLife",
+   "date": "2026-03-10",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "data",
+     "name": "elife-105165-fig1-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 1."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig2-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 2."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-105165-fig2-figsupp2-data1.pdf",
+     "caption": "Original images for Figure 2—figure supplement 2 are shown.The cells highlighted in the yellow box were included in the supplementary figure."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig2-figsupp2-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 2—figure supplement 2."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig3-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 3."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-105165-fig3-figsupp1-data1.pdf",
+     "caption": "Original images for Figure 3—figure supplement 1 are shown.The cells highlighted in the yellow box were included in the supplementary figure."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig3-figsupp1-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 3—figure supplement 1."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-105165-fig3-figsupp2-data1.pdf",
+     "caption": "Original images corresponding to Figure 3 and Figure 3—figure supplement 2.The upper panelc orresponds to AB1-Gal4, and the lower panel corresponds to Phm-Gal4."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig3-figsupp2-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 3—figure supplement 2."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig4-data1.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 4."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig4-figsupp1-data1.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 4—figure supplement 1."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig5-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 5."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-105165-fig5-figsupp1-data1.zip",
+     "caption": "Original images for without 20-hydroxyecdysone (20E) (Figure 5—figure supplement 1A) and with 20E (Figure 5—figure supplement 1B) are shown.The cells highlighted in the yellow box were included in the supplementary figure."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig5-figsupp1-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 5—figure supplement 1."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig6-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 6."
+    },
+    {
+     "kind": "raw",
+     "name": "elife-105165-fig6-figsupp1-data1.zip",
+     "caption": "Uncropped image of larvae corresponding to Figure 6—figure supplement 1."
+    },
+    {
+     "kind": "data",
+     "name": "elife-105165-fig6-figsupp1-data3.xlsx",
+     "caption": "Numerical values of graphs are shown in Figure 6—figure supplement 1."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13725015",
+   "doi": "10.1155/sci5/1517618",
+   "title": "&lt;i&gt;Cassia fistula&lt;/i&gt; L. Fruit Extract Attenuates Renal and Cardiac Toxicities by Reducing Oxidative Stress and Inflammation in Fludrocortisone Acetate-Treated Long Evans Rats.",
+   "journal": "Scientifica",
+   "date": "2026-11-01",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "SCI5-2026-1517618-s001.docx",
+     "caption": "Supporting Information Supporting Figure S1: Uncropped gel images of PCR products corresponding to the expressed genes."
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13702038",
+   "doi": "10.7717/peerj.21775",
+   "title": "Pulsed electric field-mediated elimination of yeast [&lt;i&gt;PSI&lt;/i&gt; &lt;sup&gt;+&lt;/sup&gt;] prion is variant dependent and affects cell growth dynamics.",
+   "journal": "PeerJ",
+   "date": "2026-10-23",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "peerj-14-21775-s003.pdf",
+     "caption": "Uncropped blot images from Fig. 2"
+    },
+    {
+     "kind": "data",
+     "name": "peerj-14-21775-s004.xlsx",
+     "caption": "Raw data in machine readable format"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13546626",
+   "doi": "10.7717/peerj.21653",
+   "title": "Molecular characterization of &lt;i&gt;Klebsiella pneumoniae&lt;/i&gt; isolated from different clinical sources in Eastern and Western Regions of Saudi Arabia Tertiary Hospitals.",
+   "journal": "PeerJ",
+   "date": "2026-09-02",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "data",
+     "name": "peerj-14-21653-s003.xlsx",
+     "caption": "Raw data"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21653-s004.docx",
+     "caption": "Uncropped dendrogram output from ERIC-PCR analysis of Klebsiella pneumoniae isolatesThis corresponds to the cropped dendrogram shown in Figure 2 of the main manuscript."
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21653-s005.docx",
+     "caption": "Uncropped gel documentation images supporting PCR-based detection of carbapenemase genes"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21653-s006.docx",
+     "caption": "Original gel images and electrophoresis documentation system outputs for representative Klebsiella pneumoniae isolates, included for transparency and reproducibility"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13471747",
+   "doi": "10.7717/peerj.21603",
+   "title": "Molecular detection of watermelon virus disease in Liaoning Province, China, and resistance evaluation of nine rootstocks to cucumber green mottle mosaic virus.",
+   "journal": "PeerJ",
+   "date": "2026-08-10",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s002.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Jingxin Zhensheng at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s003.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Jingxin Zhenwang at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s004.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Yongzhen at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s005.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Jingxin Zhen No.2 at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s006.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Jingxin Zhen No.4 at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s007.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Jingxin Zhen No.9 at 14 dpi"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s008.jpg",
+     "caption": "Original gel image of RT-PCR detection for CGMMV in Zhongxu Mengbao and Yezhen No. 6 at 14 dpi"
+    },
+    {
+     "kind": "data",
+     "name": "peerj-14-21603-s009.xls",
+     "caption": "Raw data of viral accumulation in rootstocks (Yongzhen, Jingxin Zhensheng, Jingxin Zhenwang) infected with CGMMV at 14 and 21 days post-inoculation detected by RT-qPCR"
+    },
+    {
+     "kind": "data",
+     "name": "peerj-14-21603-s010.xls",
+     "caption": "Raw data of viral accumulation in rootstocks (Yongzhen,Jingxin Zhen No. 2, No. 4, and No. 9) infected with CGMMV at 14 and 21 days post-inoculation detected by RT-qPCR"
+    },
+    {
+     "kind": "data",
+     "name": "peerj-14-21603-s011.xls",
+     "caption": "Raw data of viral accumulation in rootstocks (Yongzhen, Zhongxu Mengbao, Yezhen No. 6, and Jingxin Zhenzhuang) infected with CGMMV at 14 days post-inoculation detected by RT-qPCR"
+    },
+    {
+     "kind": "data",
+     "name": "peerj-14-21603-s012.xls",
+     "caption": "Raw data of viral accumulation in rootstocks (Yongzhen, Zhongxu Mengbao, Yezhen No. 6, and Jingxin Zhenzhuang) infected with CGMMV at 21 days post-inoculation detected by RT-qPCR"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s014.jpg",
+     "caption": "Original Western blot result image of rootstocks at 14 days post CGMMV inoculation"
+    },
+    {
+     "kind": "raw",
+     "name": "peerj-14-21603-s016.jpg",
+     "caption": "Original Western blot result image of rootstocks at 21 days post CGMMV inoculation"
+    }
+   ]
+  },
+  {
+   "source": "europepmc",
+   "kind": "dna",
+   "id": "PMC13459444",
+   "doi": "10.3389/fvets.2026.1837338",
+   "title": "Evaluation of plant-based antimicrobials in controlling antimicrobial resistance gene spread in poultry production continuum.",
+   "journal": "Frontiers in veterinary science",
+   "date": "2026-07-28",
+   "license": "cc by",
+   "files": [
+    {
+     "kind": "raw",
+     "name": "Image_1.jpeg",
+     "caption": "Full-length, uncropped agarose gel image corresponding to Figure 1 showing colony PCR products from donor Salmonella, recipient E. coli, and transconjugant E. coli. Lanes include 100 bp DNA ladders at both ends and PCR amplicons for blaTEM, invA, and uspA. The regions presented in Figure 1 were deri"
+    }
+   ]
   }
  ]
 }
