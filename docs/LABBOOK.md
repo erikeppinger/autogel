@@ -392,6 +392,16 @@ without a GPU, not made for gels).
   8 lanes at the right places and widths, narrow ladder lane, wells not the rim; fails on the
   old code. `lane_method="comb"` still gives the regular comb.
 
+**Protein ladders from the user's datasheets (2026-11-20)**
+- PageRuler Plus Prestained (26619), MAN0011773: the existing Tris-glycine entry (250-10 kDa)
+  confirmed; reference bands (orange 70 / 25, green 10 kDa) added. The sheet's migration table
+  shows the same nine proteins at other apparent sizes in other systems, so three entries were
+  added: **Bis-Tris MOPS** 185/115/80/65/50/30/25/15/10, **Bis-Tris MES** 190/115/80/70/50/30/
+  25/15/10, **Tris-acetate** 205/120/85/65/50/30/25 (15 and 10 run off). Using the Tris-glycine
+  sizes on a MOPS gel would put 130 kDa at 185 kDa (+42 %).
+- Prestained Protein Molecular Weight Marker (26612), MAN0011770: new, ~120/85/50/35/25/20 kDa
+  (6 native proteins, approximate; 8-16 % Tris-glycine).
+
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
 User requests: test the new features on real data; use APIs instead of manual downloads; don't

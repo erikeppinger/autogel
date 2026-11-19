@@ -127,9 +127,49 @@
    "vendor": "Thermo Scientific", "catalog": "26619", "unit": "kDa",
    "sizes": [250, 130, 100, 70, 55, 35, 25, 15, 10],
    "masses": null,
-   "note": "Apparent MW, calibrated in Tris-glycine (Laemmli) SDS-PAGE; can shift in other buffer/gel systems.",
-   "source": "https://www.thermofisher.com/order/catalog/product/26619",
-   "verified": true, "checked": "2026-11-18"
+   "reference_bands": [70, 25, 10],
+   "note": "Apparent MW in Tris-glycine SDS-PAGE (4-20 %, 8-16 %, 10-20 %, 8-15 %). Orange reference bands ~70 and 25 kDa, green 10 kDa. For Bis-Tris (MOPS/MES) or Tris-acetate gels use the matching entry: the same bands run at other apparent sizes. In gels < 10 % the small bands may run with the dye front. Lot-to-lot ~5 %.",
+   "source": "Thermo Fisher user guide MAN0011773 Rev. C.01 (PageRuler Plus Prestained Protein Ladder)",
+   "verified": true, "checked": "2026-11-20"
+  },
+  {
+   "name": "PageRuler Plus Prestained (26619), Bis-Tris MOPS",
+   "vendor": "Thermo Scientific", "catalog": "26619", "unit": "kDa",
+   "sizes": [185, 115, 80, 65, 50, 30, 25, 15, 10],
+   "masses": null,
+   "reference_bands": [65, 25, 10],
+   "note": "The same ladder as 26619, apparent MW in NuPAGE Bis-Tris gels with MOPS running buffer (4-12 %, 10 %, 12 %). In 10 % and 12 % gels the 10 kDa band runs off. Lot-to-lot ~5 %.",
+   "source": "Thermo Fisher user guide MAN0011773 Rev. C.01, migration table",
+   "verified": true, "checked": "2026-11-20"
+  },
+  {
+   "name": "PageRuler Plus Prestained (26619), Bis-Tris MES",
+   "vendor": "Thermo Scientific", "catalog": "26619", "unit": "kDa",
+   "sizes": [190, 115, 80, 70, 50, 30, 25, 15, 10],
+   "masses": null,
+   "reference_bands": [70, 25, 10],
+   "note": "The same ladder as 26619, apparent MW in NuPAGE Bis-Tris gels with MES running buffer (4-12 %, 10 %, 12 %). Lot-to-lot ~5 %.",
+   "source": "Thermo Fisher user guide MAN0011773 Rev. C.01, migration table",
+   "verified": true, "checked": "2026-11-20"
+  },
+  {
+   "name": "PageRuler Plus Prestained (26619), Tris-acetate",
+   "vendor": "Thermo Scientific", "catalog": "26619", "unit": "kDa",
+   "sizes": [205, 120, 85, 65, 50, 30, 25],
+   "masses": null,
+   "reference_bands": [65, 25],
+   "note": "The same ladder as 26619, apparent MW in NuPAGE Tris-acetate gels (3-8 %, 7 %); the 15 and 10 kDa bands run off. Lot-to-lot ~5 %.",
+   "source": "Thermo Fisher user guide MAN0011773 Rev. C.01, migration table",
+   "verified": true, "checked": "2026-11-20"
+  },
+  {
+   "name": "Prestained Protein Molecular Weight Marker (26612)",
+   "vendor": "Thermo Scientific", "catalog": "26612", "unit": "kDa",
+   "sizes": [120, 85, 50, 35, 25, 20],
+   "masses": null,
+   "note": "Six blue native proteins (beta-galactosidase, BSA, ovalbumin, carbonic anhydrase, beta-lactoglobulin, lysozyme); sizes are approximate (~), shown for 8-16 % Tris-glycine SDS-PAGE. Mobility of prestained proteins varies between buffer systems; approximate MW only. Lot-to-lot ~5 %.",
+   "source": "Thermo Fisher product information MAN0011770 Rev. C.00 (Prestained Protein Molecular Weight Marker)",
+   "verified": true, "checked": "2026-11-20"
   },
   {
    "name": "PageRuler Unstained (26614)",
