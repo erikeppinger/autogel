@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autogel"
-version = "0.5.0.dev1"
+version = "0.5.0.dev2"
 description = "Automatic lane/band detection and quantification for agarose and SDS gels, with a napari editor"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["napari[pyqt6]>=0.5", "qtpy"]
+ai = ["onnxruntime"]
 dev = ["pytest"]
 
 [project.scripts]
@@ -28,7 +29,7 @@ autogel = "autogel:napari.yaml"
 include = ["autogel*"]
 
 [tool.setuptools.package-data]
-autogel = ["napari.yaml", "ladders.json", "ladders_ape.json"]
+autogel = ["napari.yaml", "ladders.json", "ladders_ape.json", "models/*.json"]
 
 [tool.ruff]
 line-length = 120

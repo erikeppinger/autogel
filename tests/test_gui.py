@@ -629,3 +629,24 @@ def test_auto_crop_checkbox_and_region_drag(ui, tmp_path):
     pump()
     assert w.ga.params.crop is not None and abs(w.ga.region()[2] - (rect[:, 1].min() + 40)) < 2
     assert any(e["step"] == "set_crop" for e in w.ga.log)
+
+
+def test_ai_button_and_checker_spin(ui, monkeypatch):
+    w, v, msgs, _ = ui
+    from autogel import ai
+    ready(w)
+    monkeypatch.setattr(ai, "available", lambda: (False, "the AI extra is not installed (pip install autogel[ai])"))
+    w.ai_second_opinion()
+    assert any("pip install autogel[ai]" in m[1] for m in msgs)
+    from .test_models import _fake_network
+    _fake_network(monkeypatch, w.ga, keep_lanes=set(range(10)))
+    n0 = len(w.ga.bands)
+    w.ai_second_opinion()
+    assert len(w.ga.bands) >= n0 and "ai_support" in w.df and len(w.df) == len(w.ga.bands)
+    assert len(v.layers["bands"].data) == len(w.ga.bands)
+    assert any(e["step"] == "ai_review" for e in w.ga.log)
+    w.btn_expert.setChecked(True)
+    assert w.sp_checker.isVisibleTo(w)
+    w.sp_checker.setValue(0.3)
+    w.detect_bands()
+    assert w.ga.params.checker_filter == pytest.approx(0.3)

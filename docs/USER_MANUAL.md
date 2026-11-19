@@ -223,6 +223,28 @@ The **autogel** panel on the right guides you from top to bottom.
     - On simulated doublets it finds every pair down to 1:5 and measures their ratio within 1 %.
     - Real bands are often slightly lopsided, so it occasionally splits a single band (1 of 38
       ladder bands on Test_2). Turn it on for close doublets and check the result.
+- **Band checker** (learned from hand-labelled gels, always on as information):
+  - Every band gets a `band_probability` (0–1) of being a real band. Doubtful bands
+    (below 0.1) are drawn in grey.
+  - *remove unlikely bands* (Expert, off by default) removes bands below the chosen value after
+    detection, **never in marker lanes**.
+  - On gels it never saw (five other labs plus GelGenie's test images), 0.1 raised the share of
+    real bands among the detections from 49 % to 58 % and kept 98 % of the real bands.
+  - The model is a few kilobytes and adds no measurable time.
+- **AI second opinion** (button, both modes; optional extra):
+  - GelGenie's band-recognition network (Aquilina et al., *Nature Communications* 2025,
+    Apache-2.0) looks at the gel.
+  - Bands it does **not** confirm are drawn in grey (`ai_support = False` in the table). Bands it
+    sees in a lane where autogel has none are added in **green** (source `ai`). Check and
+    correct them as usual; the step is logged.
+  - On 43 gels the network never saw, keeping only confirmed bands raised precision from 49 %
+    to 91 % (bands found 85 % → 79 %). The added bands raised the bands found to 90 %.
+  - It runs on the normal CPU, about 1–2 s per gel.
+  - **Installation:** tick it in the installer (`install_windows.bat -WithAI`,
+    `install_mac.command --with-ai`) or `pip install autogel[ai]` (onnxruntime, about 17 MB).
+  - **Model:** the model (57 MB) is downloaded only when you first click the button and agree.
+    It is stored in your `.autogel` folder and checked against its checksum.
+  - **Privacy:** no image ever leaves your computer.
 - **Re-detect bands in selected lane** re-runs detection for one lane, e.g. after you moved it.
 - To correct bands, select the **bands** layer:
   - Each rectangle is one band. Its **height is the integration range**.
@@ -495,6 +517,8 @@ Options of `run`:
 | `saturated`, `saturated_px` | band contains clipped pixels. The volume is too low |
 | `lane_coverage` | fraction of the lane width the band covers. Low values suggest dust |
 | `deconvolved` | True if the band touched a neighbour and its volume comes from the peak fit (see 3.3) |
+| `band_probability` | band checker: probability that the band is real (see 3.3) |
+| `ai_support` | after *AI second opinion*: True if the network confirms the band |
 | `volume_<channel>` | with several channels/images: the band's volume in each of them |
 | `band_group`, `group_size` | the same band across lanes (see 3.5) |
 | `is_loading_control`, `lc_signal`, `normalised`, `fold_change` | Western-blot normalisation (see 3.5) |

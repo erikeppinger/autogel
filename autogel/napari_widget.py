@@ -58,6 +58,9 @@ PALETTES = {
 }
 DEFAULT_PALETTE = "colour-blind safe (Okabe-Ito)"
 MASS_MODELS = {"size-dependent": "size", "one slope through origin": "linear"}
+AI_BAND = "#009E73"        # bands added by the AI second opinion (Okabe-Ito bluish green)
+DOUBT_BAND = "#999999"     # doubtful bands: unlikely (band checker) or not confirmed by the AI
+DOUBT_PROBABILITY = 0.1
 NORM_METHODS = {"none": "none", "loading-control band": "loading_control", "total lane signal": "total_lane"}
 
 
@@ -424,11 +427,26 @@ class AutogelWidget(QWidget):
         self.chk_shoulder.setToolTip("Split a band in two when it clearly has a shoulder. Off by default: "
                                      "slightly lopsided real bands are occasionally split too - check the result.")
         f.addRow(self.chk_shoulder)
+        self.sp_checker = QDoubleSpinBox()
+        self.sp_checker.setRange(0, 0.9)
+        self.sp_checker.setSingleStep(0.05)
+        self.sp_checker.setValue(Params.checker_filter)
+        self.sp_checker.setSpecialValueText("off")
+        self.sp_checker.setToolTip("Band checker (learned from hand-labelled gels): remove bands whose probability "
+                                   "of being real is below this value. Never in marker lanes. 0.1 removed a third "
+                                   "of the false bands on unseen gels while keeping 98 % of the real ones.")
+        f.addRow("remove unlikely bands", self.sp_checker)
+        self._expert_items.append((f, self.sp_checker))
         for w in (self.cb_bg, self.sp_radius, self.sp_snr, self.sp_cov, self.sp_gelrel, self.chk_floor,
                   self.chk_deconv, self.chk_shoulder):
             self._expert_items.append((f, w))
         b = QPushButton("Detect bands (all lanes)")
         b.clicked.connect(self.detect_bands)
+        f.addRow(b)
+        b = QPushButton("AI second opinion")
+        b.setToolTip("GelGenie's band-recognition network (optional extra): bands it does not confirm turn grey, "
+                     "bands it sees where autogel has none are added (green). Check and correct them as usual.")
+        b.clicked.connect(self.ai_second_opinion)
         f.addRow(b)
         b = QPushButton("Re-detect bands in selected lane")
         b.clicked.connect(self._redetect_selected)
@@ -692,6 +710,7 @@ class AutogelWidget(QWidget):
         p.noise_floor = self.chk_floor.isChecked()
         p.deconvolve = self.chk_deconv.isChecked()
         p.split_shoulders = self.chk_shoulder.isChecked()
+        p.checker_filter = self.sp_checker.value()
         p.n_lanes = self.sp_lanes.value() or None
         p.n_tiers = self.sp_tiers.value()
         p.n_columns = self.sp_cols.value()
@@ -849,6 +868,7 @@ class AutogelWidget(QWidget):
         self.chk_crop.setChecked(p.auto_crop or bool(p.crop))
         self.chk_deconv.setChecked(p.deconvolve)
         self.chk_shoulder.setChecked(p.split_shoulders)
+        self.sp_checker.setValue(p.checker_filter)
         if p.marker_preset in PRESETS:
             self.cb_preset.setCurrentText(p.marker_preset)
         if p.marker_sizes:
@@ -1143,7 +1163,17 @@ class AutogelWidget(QWidget):
             bands.data = []
             if ga.bands:
                 from matplotlib.colors import to_rgba
-                edge = [col["band"] if b.source == "auto" else col["user_band"] for b in ga.bands]
+                edge = [col["band"] if b.source == "auto" else AI_BAND if b.source == "ai" else col["user_band"]
+                        for b in ga.bands]
+                # doubtful bands in grey: low band-checker probability or not confirmed by the AI
+                df = self.df
+                if df is not None and len(df) == len(ga.bands):
+                    doubt = np.zeros(len(df), bool)
+                    if "band_probability" in df:
+                        doubt |= df["band_probability"].to_numpy() < DOUBT_PROBABILITY
+                    if "ai_support" in df:
+                        doubt |= ~df["ai_support"].astype(bool).to_numpy()
+                    edge = [DOUBT_BAND if d and b.source == "auto" else e for e, d, b in zip(edge, doubt, ga.bands)]
                 # light fill: short (faint) bands stay visible as a box when zoomed out,
                 # instead of their two edges merging into one line
                 face = [to_rgba(c, 0.18) for c in edge]
@@ -1467,6 +1497,41 @@ class AutogelWidget(QWidget):
         self._refresh_layers()
         if self.ga.params.marker_lanes:
             self.quantify(silent=True)
+
+    def ai_second_opinion(self):
+        if not self._need():
+            return
+        if not self.ga.bands:
+            QMessageBox.information(self, "autogel", "Detect bands first.")
+            return
+        from . import ai
+        ok, why = ai.available()
+        if not ok and "not installed" in why:
+            QMessageBox.information(self, "autogel", "The AI second opinion is an optional extra.\n\n"
+                                    "Install it with:  pip install autogel[ai]\n(onnxruntime, about 17 MB)")
+            return
+        if not ok:
+            m = ai.MODEL
+            if QMessageBox.question(
+                    self, "AI model", f"Download GelGenie's band-recognition model once?\n\n"
+                    f"{m['name']}, {m['size_mb']:.0f} MB, licence {m['licence']}\nfrom {m['source']}\n"
+                    "It is stored in your .autogel folder and checked against its checksum.") != \
+                    QMessageBox.StandardButton.Yes:
+                return
+            try:
+                with self._busy("Downloading the AI model"):
+                    ai.download_model()
+            except Exception as e:
+                QMessageBox.warning(self, "autogel", f"Download failed: {e}")
+                return
+        try:
+            with self._busy("AI second opinion (GelGenie network)"):
+                self.ga.ai_review()
+        except Exception as e:
+            QMessageBox.warning(self, "autogel", str(e))
+            return
+        self.quantify(silent=True)
+        self._refresh_layers()
 
     def _apply_compare(self):
         if self.ga is None:

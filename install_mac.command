@@ -9,6 +9,7 @@
 # No administrator rights, git or command-line knowledge needed.
 #
 # Options (for IT / testing):  --prefix <folder>   --no-launcher   --yes (no questions, no pause)
+#                              --with-ai (also the optional AI second opinion, onnxruntime ~17 MB)
 set -u
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -16,11 +17,13 @@ PREFIX="$HOME/Library/Application Support/autogel"
 APPDIR="$HOME/Applications"
 LAUNCHER=1
 YES=0
+EXTRAS="gui"
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix) PREFIX="$2"; shift ;;
         --no-launcher) LAUNCHER=0 ;;
         --yes) YES=1 ;;
+        --with-ai) EXTRAS="gui,ai" ;;
         *) echo "unknown option: $1"; exit 2 ;;
     esac
     shift
@@ -69,7 +72,7 @@ fi
 VPY="$VENV/bin/python"
 say "Installing autogel and its viewer (napari) - this downloads ~300 MB and takes a few minutes ..."
 "$VPY" -m pip install --upgrade pip --quiet --disable-pip-version-check
-"$VPY" -m pip install --quiet --disable-pip-version-check "$SRC[gui]" \
+"$VPY" -m pip install --quiet --disable-pip-version-check "$SRC[$EXTRAS]" \
     || fail "Installation failed (see messages above). Check the internet connection / proxy."
 "$VPY" -c "import autogel, napari; print('autogel', autogel.__version__, '| napari', napari.__version__)" \
     || fail "autogel was installed but cannot be imported."

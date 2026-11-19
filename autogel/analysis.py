@@ -92,6 +92,10 @@ class Params:
     noise_floor: bool = True
     noise_floor_rel: float = 0.07
     noise_floor_snr: float = 10.0
+    # band checker (learned, checker.py): every band gets band_probability; optionally bands below
+    # checker_filter are removed after detection - never in marker lanes (faint ladder bands
+    # can score low next to bright samples)
+    checker_filter: float = 0.0
     min_band_distance: int = 6          # px
     skip_well_px: int = 25              # rows below the well ignored by band detection
     bound_frac: float = 0.1             # band edges where signal falls to this fraction of peak
@@ -945,6 +949,20 @@ class GelAnalysis:
             keep = [(b, h) for b, h in new if h >= self.params.min_gel_rel * ref]
             weak = len(new) - len(keep)
             new = keep
+        unlikely = 0
+        if new and self.params.checker_filter > 0:
+            from .checker import band_features, load_model, predict
+            model = load_model()
+            if model is not None:
+                markers = {L - 1 for L in self.params.marker_lanes}
+                kept_before = list(self.bands)
+                self.bands = kept_before + [b for b, _ in new]
+                p = predict(model, band_features(self))[len(kept_before):]
+                self.bands = kept_before
+                keep = [(b, h) for (b, h), pi in zip(new, p)
+                        if b.lane in markers or pi >= self.params.checker_filter]
+                unlikely = len(new) - len(keep)
+                new = keep
         split = 0
         if self.params.split_shoulders:
             out = []
@@ -963,11 +981,13 @@ class GelAnalysis:
                                    "min_gel_rel": self.params.min_gel_rel,
                                    "noise_floor": self.params.noise_floor,
                                    "split_shoulders": self.params.split_shoulders,
+                                   "checker_filter": self.params.checker_filter,
                                    "skip_well_px": self.params.skip_well_px},
                   f"{total} bands ({rejected} rejected as narrower than "
                   f"{self.params.min_coverage:.0%} of lane width: dust/specks"
                   + (f"; {weak} below {self.params.min_gel_rel:.0%} of the gel's strong bands" if weak else "")
                   + (f"; {floor} at the noise floor" if floor else "")
+                  + (f"; {unlikely} unlikely (band checker)" if unlikely else "")
                   + (f"; {split} shoulder(s) split into two bands" if split else "")
                   + ")")
         return self.bands
@@ -1418,12 +1438,46 @@ class GelAnalysis:
                     r[f"conc_{self.mass_fit['unit']}_per_ul"] = round(m / float(vol_ul), 3)
             rows.append(r)
         df = pd.DataFrame(rows)
+        df = self._model_columns(df)
         df = self._compare(df)
         n_sat = int(df["saturated"].sum()) if len(df) else 0
         extra = "; ".join(self.compare_warnings)
         self._log("quantify", {"norm_method": self.params.norm_method, "rna_integrity": self.params.rna_integrity},
                   f"{len(df)} bands quantified, {n_sat} saturated" + (f"; {extra}" if extra else ""))
         return df
+
+    def _model_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """band_probability (band checker) and, after an AI review of these bands, ai_support."""
+        if not len(df):
+            return df
+        from .checker import band_features, load_model, predict
+        model = load_model()
+        if model is not None:
+            df["band_probability"] = np.round(predict(model, band_features(self)), 3)
+        rev = getattr(self, "ai_result", None)
+        if rev and rev.get("bands") == [(b.lane, round(b.y0), round(b.y1)) for b in self.bands]:
+            df["ai_support"] = rev["support"]
+        return df
+
+    def ai_review(self, add_missing: bool = True) -> dict:
+        """Second opinion of GelGenie's network (optional extra, see ai.py): flags autogel's bands
+        it doesn't confirm and (optionally) adds the band regions it sees where autogel has none."""
+        from . import ai
+        ok, why = ai.available()
+        if not ok:
+            raise RuntimeError(f"AI second opinion not available: {why}")
+        r = ai.review(self)
+        added = 0
+        if add_missing and r["missing"]:
+            self.bands = sorted(self.bands + r["missing"], key=lambda b: (b.lane, b.y))
+            added = len(r["missing"])
+            r = ai.review(self)                      # support for the new list (added bands count as supported)
+        self.ai_result = {"support": r["support"], "bands": [(b.lane, round(b.y0), round(b.y1)) for b in self.bands],
+                          "model": ai.MODEL["name"]}
+        n_un = sum(not s for s in r["support"])
+        self._log("ai_review", {"model": ai.MODEL["name"], "add_missing": add_missing},
+                  f"{len(self.bands)} bands: {n_un} not confirmed by the network, {added} added from it")
+        return self.ai_result
 
     def _compare(self, df: pd.DataFrame) -> pd.DataFrame:
         """Per-channel volumes, band groups across lanes, normalisation, RNA integrity."""

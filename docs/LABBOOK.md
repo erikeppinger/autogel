@@ -67,6 +67,8 @@ replayable log.
 | D23 | Curved lanes estimated per gel (shift + stretch vs. depth), opt-in | Per-lane tracing followed noise and gradients; the gel-wide model is robust on simulations but found a false drift on the lab's straight Test gels |
 | D24 | Several channels / added images; default image unchanged; marker lanes may come from another image | Western blots: the chemiluminescence image usually doesn't show the prestained marker; two-colour blots and stain-free images need more than one channel |
 | D25 | Lane comparison (band groups, normalisation, RNA) only ADDS columns | Plain densitometry results stay identical for existing users |
+| D26 | Learned models only with a fair split (GelGenie train/val vs. test + external labs), as information first, deletions opt-in, never in marker lanes | A model evaluated on its training data looks better than it is; faint ladder bands must never be removed silently |
+| D27 | AI second opinion via ONNX + onnxruntime, optional extra, model downloaded on request | PyTorch (~200 MB) would break the "old laptop" goal; nothing leaves the computer |
 
 ## 4. Test material
 
@@ -101,6 +103,81 @@ replayable log.
 ---
 
 ## 6. Change log
+
+### 0.5.0.dev2 – 2026-11-19 – branch `develop`: band checker and AI second opinion
+User request: use a (AI) model for difficult bands and gels, both as a small own model and as
+an optional add-on. Rejected together with the user: cloud vision models (images would leave
+the lab, cost, internet, not reproducible) and generic "segment anything" models (large, slow
+without a GPU, not made for gels).
+
+**Data and fairness (D26)**
+- GelGenie's own split is used for both models:
+  - **training:** `images/` and `val_images/` of the Dunn-lab and stella subsets
+  - **test:** `test_images/` of every subset plus all `external_gels`, which come from five
+    labs never used for training and were GelGenie's own unseen test set
+- A detected band counts as real when a hand-outlined band's centre lies inside it.
+
+**Band checker (`autogel/checker.py`, `tools/train_band_checker.py`)**
+- **Model:** logistic regression on 11 band features: height vs. the lane's and the gel's
+  noise, height vs. the gel's strong bands and the lane's strongest band, lane coverage, width,
+  signal at the same rows in the neighbouring lanes, Rf, bands in the lane, peakedness,
+  saturation.
+- **Fit:** Newton's method with L2 in numpy, no new dependency.
+- **Size:** 1.5 KB (`autogel/models/band_checker.json`, with training and test metrics).
+- **Test (unseen):**
+
+| Threshold | Kept | Precision | Real kept |
+|---|---|---|---|
+| none | 100 % | 48.5 % | 100 % |
+| 0.1 | 82 % | 57.9 % | 97.8 % |
+| 0.2 | 70 % | 64.1 % | 92.7 % |
+
+  At 0.1:
+  - external labs 38 → 48 %
+  - lab JPEG 33 → 39 % (all real kept)
+  - stella 83 → 96 % precision, but only 88 % of the real bands kept
+- **Strongest features:** height vs. the gel's strong bands (+), signal in the neighbouring
+  lanes at the same height (−; streaks across the gel), lane coverage (+).
+- **Test_1/Test_2:** some faint ladder bands next to bright samples score below 0.1 (3 of 38 on
+  Test_1). Hence:
+  - always computed as information (`band_probability`, grey display)
+  - the filter is opt-in and never applied in marker lanes
+  - with the filter at 0.1, Test_1 keeps 19/19 + 19/19 ladder bands and loses 8 sample bands
+
+**AI second opinion (`autogel/ai.py`, optional extra `autogel[ai]`)**
+- **Model:** GelGenie Universal U-Net (Dec 2023): Apache-2.0, trained on GelGenie's training
+  split only. The "Extended" models saw the whole dataset and are not used.
+- **Runtime:** ONNX file (57 MB, SHA-256 verified) run with onnxruntime (CPU, ~17 MB) instead of
+  PyTorch (~200 MB). About 1.4 s for a 1.4 MP gel.
+- **Preprocessing as GelGenie:** grey, scaled by bit depth, padded to a multiple of 32; images
+  are capped at 1536 px on the long side. The mask is carried through autogel's orientation.
+- **Integration as a second opinion, the user decides:**
+  - unconfirmed bands are flagged (grey, `ai_support`)
+  - network regions inside a lane without an autogel band are added (source `ai`, green)
+  - the model downloads only after the user agrees; no image leaves the computer
+- **Test on 43 unseen gels** (`tools/eval_ai.py`):
+
+| Variant | Found | Precision |
+|---|---|---|
+| autogel | 0.85 | 0.49 |
+| autogel, AI-confirmed bands only | 0.79 | **0.91** |
+| autogel + AI-added bands | **0.90** | 0.50 |
+| GelGenie network alone | 0.86 | 0.84 |
+
+  - The network is weak on the stella gels (found 0.52), a style it wasn't trained on; GelGenie
+    used them only for a separate fine-tuned model.
+  - Precision of the network alone may be favoured by its outline style matching the hand
+    outlines.
+- **Download issue:** curl on Windows failed on HuggingFace's CDN (certificate revocation server
+  offline, CRYPT_E_REVOCATION_OFFLINE). autogel downloads with Python and certifi instead.
+- **Installers:** `-WithAI` / `--with-ai` options; the installer CI installs with the AI extra.
+
+**Tool comparison prepared:**
+- The GelGenie paper (open access, CC-BY) reports quantitation errors of GelAnalyzer, manual
+  segmentation and its networks on the quantitation ladder gels. Every lane is a ladder with
+  known DNA masses (NEB N0550, Thermo 10787018).
+- The protocol: per lane, 5 bands are held out, a linear fit is made on the rest, and the
+  hidden masses are predicted, 80 times. It can be reproduced with autogel (next step).
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
 User requests: test the new features on real data; use APIs instead of manual downloads; don't

@@ -32,7 +32,7 @@ jobs:
         run: test -x install_mac.command
       - name: Run installer
         timeout-minutes: 15
-        run: ./install_mac.command --yes --prefix "$RUNNER_TEMP/ag"
+        run: ./install_mac.command --yes --with-ai --prefix "$RUNNER_TEMP/ag"
       - name: App launcher (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -43,6 +43,7 @@ jobs:
         timeout-minutes: 5
         run: |
           "$RUNNER_TEMP/ag/venv/bin/autogel" ladders NEB
+          "$RUNNER_TEMP/ag/venv/bin/python" -c "import onnxruntime, autogel.ai as ai; print('AI extra', onnxruntime.__version__, ai.available())"
           "$RUNNER_TEMP/ag/venv/bin/python" -c "from autogel import markers; n, _ = markers.update_library(); print('library update', n)"
       - name: Core tests in the installed environment
         timeout-minutes: 15
@@ -73,7 +74,7 @@ jobs:
           python-version: "3.12"
       - name: Run installer
         shell: cmd
-        run: echo.| install_windows.bat -InstallDir "%RUNNER_TEMP%\ag" -NoShortcut -Yes
+        run: echo.| install_windows.bat -InstallDir "%RUNNER_TEMP%\ag" -NoShortcut -Yes -WithAI
       - name: Installed program works
         shell: cmd
         run: '"%RUNNER_TEMP%\ag\venv\Scripts\autogel.exe" ladders NEB'

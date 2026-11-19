@@ -6,10 +6,12 @@
 #  4. writes an uninstaller (Uninstall autogel.bat) into the install folder
 #
 # Options (for IT / testing):  -InstallDir <folder>   -NoShortcut   -Yes (no questions)
+#                              -WithAI (also the optional AI second opinion, onnxruntime ~17 MB)
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "autogel"),
     [switch]$NoShortcut,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$WithAI
 )
 $ErrorActionPreference = "Stop"
 $Source = Split-Path -Parent $PSScriptRoot          # the autogel folder (contains pyproject.toml)
@@ -78,7 +80,8 @@ if (-not (Test-Path (Join-Path $venv "Scripts\python.exe"))) {
 $vpy = Join-Path $venv "Scripts\python.exe"
 Say "Installing autogel and its viewer (napari) - this downloads ~300 MB and takes a few minutes ..." Cyan
 & $vpy -m pip install --upgrade pip --quiet --disable-pip-version-check
-& $vpy -m pip install --quiet --disable-pip-version-check "$Source[gui]"
+$extras = if ($WithAI) { "gui,ai" } else { "gui" }
+& $vpy -m pip install --quiet --disable-pip-version-check "$Source[$extras]"
 if ($LASTEXITCODE -ne 0) { Say "Installation failed (see messages above). Check the internet connection / proxy." Red; exit 1 }
 & $vpy -c "import autogel, napari; print('autogel', autogel.__version__, '| napari', napari.__version__)"
 if ($LASTEXITCODE -ne 0) { Say "autogel was installed but cannot be imported." Red; exit 1 }
