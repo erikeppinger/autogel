@@ -76,6 +76,7 @@ def find_gel_region(a: np.ndarray) -> tuple[int, int, int, int] | None:
 class Params:
     invert: bool | None = None          # None = auto (bright bands on dark = False)
     n_lanes: int | None = None          # None = auto (per gel row)
+    lane_method: str = "auto"           # auto (better of the two) | bands (from the bands) | comb (regular)
     n_tiers: int = 1                    # gel rows = combs stacked in one image
     tier_rows: list[float] | None = None  # split rows between gel rows (None = automatic)
     n_columns: int = 1                  # gels side by side in one image
@@ -205,6 +206,133 @@ class Band:
     y0: float        # integration start row
     y1: float        # integration end row (inclusive)
     source: str = "auto"
+
+
+# ---------------------------------------------------------------- lanes from the bands (D31)
+# User idea: find clear bands (and wells) across the gel first and use them as lane markers -
+# each lane gets the position and width of its own bands, so lanes of different width (narrow
+# ladder wells next to wide sample wells) and irregular gaps are handled. The regular comb fit
+# stays as the second candidate; the one that explains the band blobs better wins (_lane_fit_score).
+BLOB_K = 4.0             # blob threshold: median + 4 robust SDs of the band-feature image inside the gel
+BLOB_MIN_SUPPORT = 0.1   # a lane needs >= 10 % of a typical lane's band signal (edge artefacts, specks)
+
+
+def _extent(prof: np.ndarray) -> tuple[int, int]:
+    """[e0, e1) of the gel in an intensity profile; dark margins are trimmed only when they are
+    clearly darker than the gel and >= 3 % of the length on that side."""
+    n = len(prof)
+    sm = ndimage.gaussian_filter1d(np.asarray(prof, float), max(2.0, n / 200))
+    lo, hi = np.percentile(sm, 2), np.percentile(sm, 60)
+    if hi - lo <= 0:
+        return 0, n
+    idx = np.where(sm > lo + 0.35 * (hi - lo))[0]
+    if len(idx) < 0.2 * n:
+        return 0, n
+    e0, e1, pad = int(idx[0]), int(idx[-1]) + 1, int(0.01 * n)
+    e0 = e0 + pad if e0 >= 0.03 * n else 0
+    e1 = e1 - pad if n - e1 >= 0.03 * n else n
+    return e0, e1
+
+
+def _band_blobs(bandimg: np.ndarray, data: np.ndarray) -> list[tuple[float, float, float, float]]:
+    """Clear band-like blobs (bands, wells): (x0, x1, y, weight), wider than tall."""
+    from skimage import measure
+    b = ndimage.gaussian_filter(bandimg, 1.5)               # pixel noise would give speckle
+    H, W = b.shape
+    r0, r1 = _extent(data.mean(1))
+    c0, c1 = _extent(data.mean(0))
+    inner = b[r0:r1, c0:c1]
+    if inner.size == 0:
+        return []
+    med = float(np.median(inner))
+    thr = med + BLOB_K * 1.4826 * float(np.median(np.abs(inner - med))) + 1e-9
+    lab = measure.label(ndimage.binary_opening(b > thr, np.ones((2, 3))))
+    out = []
+    for r in measure.regionprops(lab, intensity_image=b):
+        y0, x0, y1, x1 = r.bbox
+        w, h = x1 - x0, y1 - y0
+        if w < max(8, W / 150) or w < 1.5 * h or r.area < 0.4 * w * max(2, h / 2):
+            continue
+        # width at a quarter of the blob's height across its rows (the threshold edge includes the
+        # band's soft flanks: a 28 px ladder lane measured 41 px)
+        xa, xb = max(0, x0 - 5), min(W, x1 + 5)
+        row = bandimg[y0:y1, xa:xb].mean(0)
+        base = float(min(row[0], row[-1]))
+        on = np.where(row > base + 0.25 * (row.max() - base))[0]
+        if len(on):
+            x0, x1 = xa + int(on[0]), xa + int(on[-1]) + 1
+        out.append((float(x0), float(x1), (y0 + y1) / 2, float(r.intensity_mean) * r.area))
+    return out
+
+
+def _lanes_from_blobs(bl: list, n: int | None = None) -> list[tuple[float, float]]:
+    """Lanes (centre, width) from blobs that line up: a blob joins the lane it overlaps by at
+    least half its (or the lane's) width. Empty lanes are filled where a gap is a multiple of the
+    typical spacing; with ``n`` the n best supported lanes are kept."""
+    if not bl:
+        return []
+    mw = float(np.median([x1 - x0 for x0, x1, _, _ in bl]))
+    lanes: list[dict] = []
+    for x0, x1, _, w in sorted((b for b in bl if b[1] - b[0] <= 2.5 * mw), key=lambda b: b[0] + b[1]):
+        best = None
+        for L in lanes:
+            lx0, lx1 = np.median(L["x0"]), np.median(L["x1"])
+            ov = min(x1, lx1) - max(x0, lx0)
+            if ov >= 0.5 * min(x1 - x0, lx1 - lx0) and (best is None or ov > best[0]):
+                best = (ov, L)
+        if best:
+            best[1]["x0"].append(x0)
+            best[1]["x1"].append(x1)
+            best[1]["s"] += w
+            best[1]["n"] += 1
+        else:
+            lanes.append({"x0": [x0], "x1": [x1], "s": w, "n": 1})
+    lanes = [L for L in lanes if L["n"] >= 2] or lanes
+    ms = float(np.median([L["s"] for L in lanes]))
+    lanes = [L for L in lanes if L["s"] >= BLOB_MIN_SUPPORT * ms]
+    res = sorted((float(np.median(L["x0"]) + np.median(L["x1"])) / 2,
+                   float(np.median(L["x1"]) - np.median(L["x0"])), L["s"]) for L in lanes)
+    if len(res) >= 3:
+        sp = float(np.median(np.diff([r[0] for r in res])))
+        w0 = float(np.median([r[1] for r in res]))
+        filled = [res[0]]
+        for a, b in zip(res[:-1], res[1:]):
+            k = int(round((b[0] - a[0]) / sp))
+            if k >= 2 and abs((b[0] - a[0]) / k - sp) < 0.25 * sp:
+                filled += [(a[0] + j * (b[0] - a[0]) / k, w0, 0.0) for j in range(1, k)]
+            filled.append(b)
+        res = filled
+    if n and len(res) > n:
+        res = sorted(sorted(res, key=lambda r: -r[2])[:n])
+    return [(x, w) for x, w, _ in res]
+
+
+def _lane_fit_score(lanes: list[tuple[float, float]], bl: list) -> float:
+    """How well lanes (centre, width) explain the band blobs: each blob counts with the share of
+    its width covered by the lane holding its centre; blobs side by side in the same row of one
+    lane (that lane holds two real lanes) count against it, twice."""
+    tot = sum(w for *_, w in bl)
+    if not lanes or tot <= 0:
+        return 0.0
+    good = clash = 0.0
+    members: dict[int, list] = {}
+    for x0, x1, y, w in bl:
+        c = (x0 + x1) / 2
+        k = next((k for k, (x, wd) in enumerate(lanes) if abs(c - x) <= wd / 2), None)
+        if k is None:
+            continue
+        x, wd = lanes[k]
+        good += w * max(0.0, min(x1, x + wd / 2) - max(x0, x - wd / 2)) / max(1.0, x1 - x0)
+        members.setdefault(k, []).append((x0, x1, y, w))
+    for m in members.values():
+        m.sort(key=lambda t: t[2])
+        for i, a in enumerate(m):
+            for b_ in m[i + 1:]:
+                if b_[2] - a[2] > 4:
+                    break
+                if b_[0] > a[1] or a[0] > b_[1]:
+                    clash += min(a[3], b_[3])
+    return (good - 2 * clash) / tot
 
 
 class GelAnalysis:
@@ -361,14 +489,29 @@ class GelAnalysis:
                 comb = prof / (prof.max() + 1e-12)
                 peaks, spacing = self._fit_lane_grid(comb, self.params.n_lanes)
                 width = 0.8 * spacing
-                well = ra + self._find_well(a[ra:rb, ca:cb], peaks, width)
+                cand = [(float(p), width) for p in peaks]
+                how = "regular comb"
+                if self.params.lane_method in ("auto", "bands"):
+                    bl = _band_blobs(bandimg[ra:rb, ca:cb], a[ra:rb, ca:cb])
+                    from_bands = _lanes_from_blobs(bl, self.params.n_lanes)
+                    if self.params.n_lanes and len(from_bands) != int(self.params.n_lanes):
+                        from_bands = []                    # the user's lane count is binding
+                    if from_bands and (self.params.lane_method == "bands" or
+                                       _lane_fit_score(from_bands, bl) > _lane_fit_score(cand, bl) + 0.02):
+                        cand, how = from_bands, "from the bands"
+                peaks = [x for x, _ in cand]
+                well = ra + self._find_well(a[ra:rb, ca:cb], peaks, float(np.median([w for _, w in cand]))
+                                            if cand else width)
                 y0 = max(float(ra), well - 10)
                 y1 = float(rb - 1 - (int(H * .005) if t == len(tiers) - 1 and rb == H else 2))
                 prefix = chr(65 + t * len(columns) + col) if n_gels > 1 else ""
-                lanes += [Lane(x=float(ca + p), width=float(width), y0=y0, y1=y1, name=f"{prefix}{i + 1}",
-                               tier=t, column=col) for i, p in enumerate(peaks)]
-                info.append(f"{prefix + ': ' if prefix else ''}{len(peaks)} lanes, width {width:.0f} px, "
-                            f"spacing {spacing:.1f} px, well row {well:.0f}")
+                lanes += [Lane(x=float(ca + x), width=float(w), y0=y0, y1=y1, name=f"{prefix}{i + 1}",
+                               tier=t, column=col) for i, (x, w) in enumerate(cand)]
+                ws = [w for _, w in cand]
+                sp_ = float(np.median(np.diff(peaks))) if len(peaks) > 1 else spacing
+                info.append(f"{prefix + ': ' if prefix else ''}{len(cand)} lanes {how}, width "
+                            + (f"{min(ws):.0f}-{max(ws):.0f}" if ws and max(ws) - min(ws) >= 2 else f"{width:.0f}")
+                            + f" px, spacing {sp_:.1f} px, well row {well:.0f}")
         self.lanes = lanes
         n_bent = self.trace_lanes(bandimg) if self.params.curved_lanes else 0
         if n_bent:
@@ -534,7 +677,17 @@ class GelAnalysis:
         """Well row inside one gel row: every lane has a well, only some have bands -> median
         over lanes, then the TOPMOST clear peak in the top 20 % (not the strongest one)."""
         H = a.shape[0]
-        top = a[: max(5, int(H * .2))]
+        # below the gel's top edge: where the image shows dark space above the gel, the gel's
+        # bright rim right after the rise would be taken for the wells
+        head = a[: max(10, int(H * .3))]
+        cols = [head[:, max(0, int(p - width / 2)): int(p + width / 2) + 1].mean(1) for p in peaks]
+        prof = ndimage.gaussian_filter1d(np.median(cols, axis=0) if cols else head.mean(1), 2)
+        lo, mid = float(prof[: max(3, int(H * .01))].mean()), float(np.median(prof))
+        g0 = 0
+        if lo < 0.3 * mid:                           # dark space above the gel (lab gel: 6 %)
+            rise = int(np.argmax(prof > lo + 0.5 * (mid - lo)))
+            g0 = rise + int(0.015 * H)
+        top = a[g0: g0 + max(5, int(H * .2))]
         per_lane = [top[:, max(0, int(p - width / 2)): int(p + width / 2) + 1].mean(1) for p in peaks]
         rowp = np.median(per_lane, axis=0) if per_lane else top.mean(1)
         rowp = ndimage.gaussian_filter1d(rowp, 2)
@@ -544,7 +697,7 @@ class GelAnalysis:
         if len(pk):
             thr = max(noise, 0.15 * pr["prominences"].max())
             good = [k for k, pp in zip(pk, pr["prominences"]) if pp > thr]
-        return float(good[0]) if good else float(int(H * .01))
+        return float(g0 + good[0]) if good else float(g0 + int(H * .01))
 
     def tier_bounds(self) -> list[tuple[int, int]]:
         """Row ranges of the gel rows. Manual split rows win; otherwise they are searched."""

@@ -152,6 +152,14 @@ The **autogel** panel on the right guides you from top to bottom.
    estimates the number and asks you to confirm or correct it before it continues. This guards
    against tray edges or labels being counted as lanes.
 2. Click **Detect lanes**. Lanes are drawn as rectangles; marker lanes are drawn in orange.
+   - autogel first looks for clear bands and wells across the gel and takes each lane's
+     position **and width** from its own bands. Lanes of different width (a narrow ladder well
+     next to wide sample wells) and uneven gaps are handled; empty lanes are filled in where the
+     spacing shows them.
+   - It also fits a regular comb of equally spaced, equally wide lanes and keeps whichever of the
+     two explains the bands better. The log says which (*lanes from the bands* or *regular comb*).
+   - Lanes start at the wells, also when the gel is smaller than the picture and its top edge
+     shows as a bright line.
 3. To correct lanes, select the **lanes** layer in the layer list and use napari's tools:
    - *select* (arrow) to move or resize a lane
    - *delete* to remove a selected lane
@@ -584,6 +592,7 @@ Options of `run`:
 | Problem | Fix |
 |---|---|
 | Wrong number of lanes | Enter the real number under **number of lanes** and detect again. Delete or draw lanes by hand |
+| Lanes all equally wide although the wells differ | The regular comb won; check the log after *Detect lanes*. Resize lanes by hand (lanes layer, select tool) |
 | Tray edge or label counted as a lane | Same as above. Entering the lane count avoids it |
 | Dust counted as a band | Raise **min. lane coverage**, or delete the band |
 | Faint band missed | Lower **min. signal/noise**, or draw the band |

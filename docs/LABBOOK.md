@@ -70,6 +70,7 @@ replayable log.
 | D26 | Learned models only with a fair split (GelGenie train/val vs. test + external labs), as information first, deletions opt-in, never in marker lanes | A model evaluated on its training data looks better than it is; faint ladder bands must never be removed silently |
 | D27 | AI second opinion via ONNX + onnxruntime, optional extra, model downloaded on request | PyTorch (~200 MB) would break the "old laptop" goal; nothing leaves the computer |
 | D28 | Touching-band peak fit only when R² ≥ 0.97 (was 0.9); background unchanged | On the GelGenie ladder gels the default rolling ball beat every other radius/method; mediocre Gaussian fits of real (tailed) bands cost NEB 1.25 points, Thermo neutral |
+| D31 | Lanes from the bands (user idea) or the regular comb, whichever explains the band blobs better; per-lane widths; well row below the gel's top edge | Lab gels with narrow ladder wells, smears and a gel smaller than the image failed completely; benchmark better in every subset |
 | D30 | Ladder-guided split of a marker band where the ladder expects a second band inside it (two-Gaussian fit near the expected row); split part = source `ladder`, used for sizes, not as ng standard | NEB 900 bp on the bright 1000 bp band's shoulder: found 34 -> 40 of 44 lanes; its volume is a model estimate, so as an ng standard it cost +2.3 points |
 | D29 | Marker bands paired with the ladder by local alignment (spacing and brightness per ng change smoothly step to step), classic search kept where clearly smoother; no ladder-guided band splitting/adding | Real ladder lanes: wells, dye front, merged pairs and misses occur together; a global curve bends around them. Splitting/adding bands gave no net gain |
 
@@ -345,6 +346,51 @@ without a GPU, not made for gels).
   lane and integration range, as lanes already were); redraw + quantify only after a real change.
   Checked on the lab gel: 0 log entries in 4 s idle (before: ~2 per second); deleting a band in
   the viewer still applies once. The analysis itself takes ~0.03 s per quantify.
+
+**Lanes from the bands (user report on the same gels + user idea, D31)**
+- **Report:** 8 lanes (narrow ladder left, 6 wide sample lanes, wider ladder right) on a gel
+  covering ~840 of 1814 px. autogel found 3 or 5 lanes (auto) or 8 squeezed 30 px lanes in the
+  middle (8 given), all of one width, starting at the gel's top edge.
+- **Causes:**
+  1. The lane comb's baseline window was a quarter of the *image* width; next to a gel that is
+     smaller than the image it reaches into the dark margin, so the gel's edges became two huge
+     plateaus that the comb fit locked onto.
+  2. In smeared sample lanes the band-feature profile is periodic at the smear *edges* (~38 px,
+     two per lane), so the comb found half-spacing lanes.
+  3. One spacing and one width for all lanes; ladder wells are often narrower.
+  4. The well row = topmost clear peak in the upper 20 %: here the gel's bright top rim.
+- **Automatic lane count was weak in general:** exact on 34 % of the 90 single-gel benchmark
+  images (external labs 4 %). The band benchmark gives autogel the true count, so this was not
+  visible there.
+- **User idea, implemented:** find clear band-like blobs (bands, wells) first - band-feature
+  image smoothed (1.5 px), threshold median + 4 robust SD *inside the gel*, wider than tall -,
+  group blobs that overlap horizontally into lanes; lane centre and width (blob width at a
+  quarter of its height) from its blobs; drop lanes with < 10 % of a typical lane's band
+  signal; fill empty lanes where a gap is a multiple of the spacing; with a given count keep the
+  best supported.
+- **Alone it was worse on the benchmark** (bands inside a lane 0.903 -> 0.825), but right where
+  the comb fails. So both candidates are scored on the blobs (share of each blob's width covered
+  by its lane, minus 2x blobs side by side in one lane's row = a merged lane) and the better one
+  is used (`lane_method = "auto"`; "bands" / "comb" force one).
+- **Tried and dropped:** comb on the intensity profile inside the gel (exact count 34 -> 44 %,
+  but bands inside a lane 0.903 -> 0.853).
+- **Well row:** searched below the gel's top edge when the image is dark above the gel (top rows
+  < 30 % of the gel's brightness; lab gel 6 %; a synthetic inverted gel at 68 % must not trigger).
+  Without it, recall +1 point but precision -6 points on the lab JPEGs (junk above the wells).
+- **Lab gels:** both now 8 lanes, ladders 26/30 px, samples 82-89 px, well rows 175/232; checked
+  in the GUI.
+- **Band benchmark** (true lane count given; committed -> now):
+
+| Subset | Recall | Precision | Bands inside a lane |
+|---|---|---|---|
+| quantitation ladder gels | 0.853 -> **0.924** | 0.810 -> **0.870** | 0.908 -> **0.984** |
+| lab JPEGs (nathan) | 0.810 -> **0.824** | 0.446 -> **0.493** | 0.906 -> **0.915** |
+| external labs | 0.827 -> **0.835** | 0.377 -> 0.377 | 0.933 -> 0.934 |
+
+  Without a lane count (90 single-gel images): bands inside a lane 0.903 -> 0.935.
+- **Tests:** synthetic gel like the lab's (smaller than the image, narrow + wide wells, smears):
+  8 lanes at the right places and widths, narrow ladder lane, wells not the rim; fails on the
+  old code. `lane_method="comb"` still gives the regular comb.
 
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness

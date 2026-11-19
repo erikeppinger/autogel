@@ -69,6 +69,58 @@ def test_upside_down_input(tmp_path):
     assert df[df.lane == 2]["size_bp"].iloc[0] == pytest.approx(2500, rel=0.05)
 
 
+def _lab_gel(path, seed=0):
+    """Like the lab's 2024-09-27 gels: the gel covers only the middle of a wider, dark image; a
+    narrow ladder well at the left, six wide sample wells, a wider ladder at the right; samples
+    hold one strong band, one weak band and a smear."""
+    rng = np.random.default_rng(seed)
+    H, W = 1360, 1800
+    yy, xx = np.mgrid[0:H, 0:W].astype(float)
+    img = np.full((H, W), 30.0)
+    gel = (xx > 330) & (xx < 1170) & (yy > 40) & (yy < 1320)
+    img[gel] = 380.0
+    lanes = [(380, 28, "ladder")] + [(455 + 101 * k, 86, "sample") for k in range(6)] + [(1060, 80, "ladder")]
+
+    def box(xc, w):
+        return 1 / (1 + np.exp(-(xx - (xc - w / 2)) / 1.5)) / (1 + np.exp((xx - (xc + w / 2)) / 1.5))
+    for xc, w, kind in lanes:
+        prof = box(xc, w)
+        img += 400 * np.exp(-0.5 * ((yy - 182) / 4) ** 2) * prof                 # well
+        if kind == "ladder":
+            for y in np.linspace(440, 1150, 16):
+                img += 900 * np.exp(-0.5 * ((yy - y) / 4) ** 2) * prof
+        else:
+            img += 1800 * np.exp(-0.5 * ((yy - 400) / 6) ** 2) * prof
+            img += 300 * np.exp(-0.5 * ((yy - 830) / 5) ** 2) * prof
+            img += 120 * ((yy > 400) & (yy < 1000)) * prof                      # smear
+    img = np.clip(img + rng.normal(0, 15, img.shape), 0, 65535) * gel + 30 * ~gel
+    tifffile.imwrite(path, img.astype(np.uint16))
+    return lanes
+
+
+def test_lanes_from_bands_on_smaller_gel_with_different_wells(tmp_path):
+    # user report: the first lane started a third into the picture and all lanes were equally wide
+    truth = _lab_gel(str(tmp_path / "lab.tif"))
+    for n in (None, 8):
+        ga = GelAnalysis(str(tmp_path / "lab.tif"), Params(n_lanes=n))
+        ga.detect_lanes()
+        assert len(ga.lanes) == 8
+        for lane, (xc, w, _) in zip(ga.lanes, truth):
+            assert lane.x == pytest.approx(xc, abs=8)
+            assert lane.width == pytest.approx(w, rel=0.3)
+        assert ga.lanes[0].width < 0.5 * ga.lanes[1].width                    # narrow ladder lane
+        assert 165 <= ga.lanes[0].y0 + 10 <= 195                                # wells, not the gel's top edge
+        assert "from the bands" in ga.log[-1]["result"]
+
+
+def test_lane_method_comb_still_available(tmp_path):
+    _lab_gel(str(tmp_path / "lab.tif"))
+    ga = GelAnalysis(str(tmp_path / "lab.tif"), Params(n_lanes=8, lane_method="comb"))
+    ga.detect_lanes()
+    assert "regular comb" in ga.log[-1]["result"]
+    assert len({round(l.width) for l in ga.lanes}) == 1
+
+
 def test_inverted_stain(tmp_path):
     ga = run(make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes(), invert=True), n_lanes=10)
     assert ga.gel.orientation["invert"] is True
