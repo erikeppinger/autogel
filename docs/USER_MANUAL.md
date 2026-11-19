@@ -558,7 +558,7 @@ Options of `run`:
   - autogel fully automatic: 26 % / 28 %, like raw GelAnalyzer (26 % / 27 %) and Image Studio
     (24–32 % / 26–27 %)
   - on the lanes where all ladder bands were found, compared on exactly the same lanes:
-    autogel 17 % / 10 %, manual segmentation 17 % / 13 %, GelAnalyzer with background
+    autogel 15 % / 10 %, manual segmentation 17 % / 13 %, GelAnalyzer with background
     correction 15 % / 10 %, Image Studio 22–28 % / 12–15 %
 - **Practical consequence:** check the ladder bands. When all ladder bands are found, autogel's
   numbers are as good as careful manual work.

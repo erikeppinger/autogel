@@ -67,12 +67,10 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
         if gel not in PAPER_GELS:
             continue
         lad = LADDERS[gel.split("_", 1)[1]][0]
+        bg.EXTRA.clear()
+        bg.EXTRA.update(extra)   # settings go in at creation (profiles are cached, changing them later does nothing)
         r = bg.evaluate(img, mp)                       # same lane count as the benchmark (from the masks)
         ga = r["_ga"]
-        for k, v in extra.items():
-            setattr(ga.params, k, v)
-        if extra:
-            ga.detect_bands()
         vols = ga._volumes()
         lanes = sorted(range(len(ga.lanes)), key=lambda i: ga.lanes[i].x)
         for li, i in enumerate(lanes, start=1):
@@ -136,12 +134,8 @@ def same_lanes(mine, src, paper_name, seg, ims):
 
 
 def main(argv):
-    extra = {}
-    if "--set" in argv:
-        for k in [i for i, a in enumerate(argv) if a == "--set"][::-1]:
-            key, _, val = argv[k + 1].partition("=")
-            extra[key] = {"0": False, "1": True}.get(val, float(val) if val.replace(".", "").isdigit() else val)
-            del argv[k:k + 2]
+    argv = bg._parse_set(argv)          # typed, unknown names rejected
+    extra = dict(bg.EXTRA)
     data, src = argv[0], argv[1]
     out = argv[2] if len(argv) > 2 else None
     ours = autogel_lanes(data, extra)

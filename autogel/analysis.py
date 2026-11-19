@@ -22,6 +22,7 @@ from .markers import PRESETS, MarkerCalibration, assign_marker
 # shoulder splitting (Params.split_shoulders): the smaller part must carry at least this share of the
 # larger one (1:5) - real bands are slightly lopsided and a small Gaussian fits their tail; and the
 # second curvature minimum must stand out of the curvature noise by this factor
+DECONV_MIN_R2 = 0.97            # touching bands: peak fit used only when it explains this share
 SHOULDER_MIN_SHARE = 0.2
 # curved lanes: a traced bend is applied only above this fraction of the lane width
 BEND_MIN_FRAC = 0.15
@@ -1372,7 +1373,7 @@ class GelAnalysis:
             return None
         res = cc - model(yy, *p)
         r2 = 1 - float((res ** 2).sum()) / (float(((cc - cc.mean()) ** 2).sum()) or 1.0)
-        if not np.isfinite(r2) or r2 < 0.9:
+        if not np.isfinite(r2) or r2 < DECONV_MIN_R2:
             return None
         areas = np.array([p[3 * j] * p[3 * j + 2] for j in range(n)])
         if areas.sum() <= 0:

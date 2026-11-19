@@ -69,6 +69,7 @@ replayable log.
 | D25 | Lane comparison (band groups, normalisation, RNA) only ADDS columns | Plain densitometry results stay identical for existing users |
 | D26 | Learned models only with a fair split (GelGenie train/val vs. test + external labs), as information first, deletions opt-in, never in marker lanes | A model evaluated on its training data looks better than it is; faint ladder bands must never be removed silently |
 | D27 | AI second opinion via ONNX + onnxruntime, optional extra, model downloaded on request | PyTorch (~200 MB) would break the "old laptop" goal; nothing leaves the computer |
+| D28 | Touching-band peak fit only when R² ≥ 0.97 (was 0.9); background unchanged | On the GelGenie ladder gels the default rolling ball beat every other radius/method; mediocre Gaussian fits of real (tailed) bands cost NEB 1.25 points, Thermo neutral |
 
 ## 4. Test material
 
@@ -187,14 +188,14 @@ without a GPU, not made for gels).
   the PDF sheet MAN0000898 (it gives sizes and the 500 ng load); they are shown as an image on
   the product page (20 ng 15,000–2,000 bp, 70 ng at 1,500, 30 ng 1,000–200, 40 ng at 100; per
   0.5 µg) and are the same values the GelGenie code uses.
-- **Result**, median (middle half) of the per-lane error; both ladders in one run, so the NEB
-  values differ slightly from the first NEB-only run (16.1 / 26.7 %) because the random hidden
-  sets are drawn in a different order:
+- **Result** (with the peak-fit threshold R² ≥ 0.97, see below), median (middle half) of the
+  per-lane error; both ladders in one run, so the random hidden sets are drawn in a different
+  order than in the first NEB-only run (16.1 / 26.7 %):
 
 | Method | NEB lanes | NEB median | Thermo lanes | Thermo median |
 |---|---|---|---|---|
-| autogel, fully automatic (detection + ladder assignment) | 100 | 26.4 % | 180 | 27.5 % |
-| autogel, bands identified via the hand outlines | 33 | 17.3 % | 68 | 10.1 % |
+| autogel, fully automatic (detection + ladder assignment) | 100 | 26.1 % | 180 | 27.6 % |
+| autogel, bands identified via the hand outlines | 33 | 15.1 % | 68 | 10.1 % |
 | Manual segmentation (paper) | 102 | 17.8 % | 180 | 24.8 % |
 | GelAnalyzer, background corrected (paper) | 102 | 17.5 % | 180 | 27.2 % |
 | GelAnalyzer, raw (paper) | 102 | 26.1 % | 180 | 27.1 % |
@@ -207,7 +208,7 @@ without a GPU, not made for gels).
 
 | Method, median on the same lanes | NEB (31 lanes) | Thermo (68 lanes) |
 |---|---|---|
-| autogel, identified bands | 17.3 % | 10.1 % |
+| autogel, identified bands | 15.1 % | 10.1 % |
 | Manual segmentation | 17.0 % | 13.2 % |
 | Manual + rolling ball | 16.6 % | 14.9 % |
 | GelAnalyzer, raw | 16.9 % | 11.5 % |
@@ -215,14 +216,47 @@ without a GPU, not made for gels).
 | Image Studio, 3 variants | 22–28 % | 12–15 % |
 
 - **Reading:**
-  - On the same lanes, autogel's band measurement is level with manual segmentation and raw
-    GelAnalyzer, better than Image Studio, and slightly behind GelAnalyzer with background
-    correction. The large gap in the first table (10 vs 25 % on Thermo) is mostly lane
+  - On the same lanes, autogel's band measurement is better than manual segmentation, raw
+    GelAnalyzer and Image Studio, and level with GelAnalyzer with background correction
+    (15.1 vs 14.7 %, 10.1 vs 9.5 %). The large gap in the first table (10 vs 25 % on Thermo) is mostly lane
     selection, not a better method.
   - Fully automatic, autogel is level with all published tools on the Thermo gels and with raw
     GelAnalyzer / Image Studio on the NEB gels, where it trails the manually guided methods.
     Missed or merged ladder bands shift the size assignment.
-  - Next lever: GelAnalyzer's background correction. Worth testing as an option.
+
+**Background and peak fit tuned on the ladder gels (user request: try GelAnalyzer's correction)**
+- GelAnalyzer's best variant in the paper is a rolling ball on the lane profile; autogel's
+  default is already a rolling ball (flat, radius = image height / 40, here 26 px).
+- **Bug found first:** `--set` in `eval_quantitation.py` changed the settings after the lane
+  profiles were cached, so every setting gave identical numbers. Settings now go in when the
+  analysis is created, typed and checked like in the benchmark. No documented number used it.
+  The GUI clears the cache before detection and was not affected.
+- **Background sweep** (median %, NEB auto / NEB same lanes / Thermo auto / Thermo same lanes):
+
+| Setting | NEB auto | NEB same | Thermo auto | Thermo same |
+|---|---|---|---|---|
+| default rolling ball, radius ≈ 26 px | **26.4** | **17.3** | **27.5** | 10.1 |
+| radius 10 | 34.9 | 20.1 | 29.5 | 19.7 |
+| radius 50 | 33.6 | 18.9 | 29.9 | 9.6 |
+| radius 100 / 200 | 44–46 | 22–24 | 31 | 14 |
+| lane edges | 38.7 | 22.5 | 30.7 | 22.0 |
+| no background | 67.5 | 27.2 | 35.4 | 28.0 |
+
+  The default is already the best; no new background option is needed.
+- **The real difference was the peak fit of touching bands (D22).** GelAnalyzer integrates the
+  profile; autogel fitted Gaussians whenever R² ≥ 0.9. Real ladder bands are not Gaussian
+  (tails, tilt), so mediocre fits redistributed signal wrongly. Paired per lane vs. R² ≥ 0.9:
+
+| Peak fit | NEB same lanes | NEB lanes better / worse | Thermo same lanes | Thermo better / worse |
+|---|---|---|---|---|
+| off | 15.1 % | 30 / 3 | 10.2 % | 18 / 47 (+0.1 points) |
+| **R² ≥ 0.97** | **15.1 %** | **25 / 8** (−1.25 points, p < 0.001) | **10.1 %** | 11 / 24 (+0.03 points) |
+| R² ≥ 0.99 | 15.1 % | | 10.1 % | |
+
+- **Decision (D28):** `DECONV_MIN_R2 = 0.97` (was 0.9). Clean doublets (simulated test: still
+  fitted) keep the benefit; poorly fitting real bands fall back to the valley split. Detection
+  is unchanged (the fit only changes volumes).
+
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
 User requests: test the new features on real data; use APIs instead of manual downloads; don't
@@ -450,7 +484,7 @@ to the library ("a mask for git") that ships with a release or can be updated fr
 **Overlapping bands (item 3, D22)**
 - **Touching bands (default on):** auto bands whose ranges touch are fitted with one Gaussian
   each over the shared range. The shared signal is split by the fitted areas; the fit is
-  accepted at R² ≥ 0.9, otherwise the valley split is kept. User-drawn bands are never
+  accepted at R² ≥ 0.9 (0.97 since D28), otherwise the valley split is kept. User-drawn bands are never
   touched.
   - Simulated 4:1 doublet: valley split 4.63, peak fit 4.01.
   - Column `deconvolved`.
