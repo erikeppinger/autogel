@@ -130,6 +130,46 @@ def test_marker_count_mismatch_warns(gel):
     assert df[df.lane == 2]["size_bp"].iloc[0] == pytest.approx(2500, rel=0.03)
 
 
+def _neb_lane():
+    """NEB 1 kb Plus as on a real gel: rows from a curved migration law, volumes ~ masses with a
+    smooth size dependence (as measured on the GelGenie ladder gels)."""
+    from autogel.markers import PRESETS
+    e = PRESETS["NEB Quick-Load Purple 1 kb Plus (N0550)"]
+    ls = np.log10(e["sizes"])
+    x = (ls.max() - ls) / (ls.max() - ls.min())
+    ys = 240 + 560 * (0.7 * x + 0.3 * x ** 2)
+    vols = np.asarray(e["masses"], float) * 100 * (1 - 0.4 * x)
+    return e, list(ys), list(vols)
+
+
+def test_marker_wells_and_dye_front_beyond_three_extras():
+    # 2 bands at the wells + 2 at the dye front: the old search gave up above 3 extras and
+    # paired top -> bottom, so every size was wrong (24_NEB lane 6 of the GelGenie gels)
+    from autogel.markers import assign_marker
+    e, ys, vols = _neb_lane()
+    yy, vv = [40.0, 55.0] + ys + [930.0, 955.0], [3000.0, 2000.0] + vols + [4000.0, 3000.0]
+    y_a, s_a, _, warn = assign_marker(yy, e["sizes"], e["masses"], vv)
+    assert dict(zip(y_a, s_a)) == dict(zip(ys, e["sizes"]))
+    assert any("Ignored the band" in w for w in warn)
+
+
+def test_marker_merged_pair_plus_well_band():
+    # 1000 bp swallows 900 bp (merged, at the bright band's place) and a well band is detected:
+    # same count as the ladder, so the old code paired directly and shifted the top
+    from autogel.markers import assign_marker
+    e, ys, vols = _neb_lane()
+    k = e["sizes"].index(1000)
+    yy = [90.0] + ys[:k + 1] + ys[k + 2:]
+    vv = [5000.0] + vols[:k] + [vols[k] + vols[k + 1]] + vols[k + 2:]
+    y_a, s_a, _, _ = assign_marker(yy, e["sizes"], e["masses"], vv)
+    got = dict(zip(y_a, s_a))
+    assert 90.0 not in got                                  # the well band is not a ladder band
+    truth = dict(zip(ys, e["sizes"]))
+    wrong = [y for y, s in got.items() if y != ys[k] and truth[y] != s]
+    assert not wrong
+    assert got.get(ys[k]) in (1000, 900, None)
+
+
 def test_marker_with_dust_band_is_matched(gel):
     ga = run(gel, n_lanes=10)
     ga.set_marker([1], sizes=SIZES)

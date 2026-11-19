@@ -25,11 +25,13 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from scipy.stats import linregress  # noqa: E402
 
-from autogel.markers import PRESETS, assign_marker  # noqa: E402
+from autogel.markers import PRESETS  # noqa: E402
 
+PRESET_NAMES = {"NEB": "NEB Quick-Load Purple 1 kb Plus (N0550)",
+                "Thermo": "Invitrogen 1 Kb Plus (10787018, 100-15,000 bp)"}
 LADDERS = {  # name in the gel file -> (ladder, name in the paper's source data)
-    "NEB": (PRESETS["NEB Quick-Load Purple 1 kb Plus (N0550)"], "NEB"),
-    "Thermo": (PRESETS["Invitrogen 1 Kb Plus (10787018, 100-15,000 bp)"], "ThermoFisher"),
+    "NEB": (PRESETS[PRESET_NAMES["NEB"]], "NEB"),
+    "Thermo": (PRESETS[PRESET_NAMES["Thermo"]], "ThermoFisher"),
 }
 EXCLUDE = {("14_NEB", 2), ("16_NEB", 2), ("17_NEB", 2)}
 # the 30 gels the paper evaluated (GelGenie notebook, gel_based_order; source data of Fig. S2)
@@ -71,19 +73,19 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
         bg.EXTRA.update(extra)   # settings go in at creation (profiles are cached, changing them later does nothing)
         r = bg.evaluate(img, mp)                       # same lane count as the benchmark (from the masks)
         ga = r["_ga"]
+        enough = {i for i in range(len(ga.lanes)) if sum(b.lane == i for b in ga.bands) >= 8}
+        # as a user would: every lane is a ladder lane of the known ladder; calibrate() pairs the
+        # bands with the ladder (and refines them, ladder_guided)
+        ga.set_marker([i + 1 for i in range(len(ga.lanes))], preset=PRESET_NAMES[gel.split("_", 1)[1]])
+        cals = {c.lane: c for c in ga.calibrate()}
         vols = ga._volumes()
         lanes = sorted(range(len(ga.lanes)), key=lambda i: ga.lanes[i].x)
         for li, i in enumerate(lanes, start=1):
-            if (gel, li) in EXCLUDE:
+            if (gel, li) in EXCLUDE or i not in enough or i not in cals:
                 continue
-            bl = [(b.y, v) for b, v in zip(ga.bands, vols) if b.lane == i]
-            if len(bl) < 8:
-                continue
-            ys, sizes, masses, warn = assign_marker([y for y, _ in bl], lad["sizes"], lad["masses"],
-                                                    volumes=[v for _, v in bl])
-            vmap = dict(bl)
-            vol = [vmap[y] for y in ys]
-            err = hidden_linreg(vol, masses, rng=rng)
+            c_ = cals[i]
+            ys = c_.ys
+            err = hidden_linreg(c_.volumes, c_.masses, rng=rng)
             # measurement only: which band is which taken from the hand outlines (as the paper's
             # tools started from identified bands); lanes whose outlines hold all ladder bands
             lane = ga.lanes[i]

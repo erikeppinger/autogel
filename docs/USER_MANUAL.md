@@ -305,12 +305,16 @@ The **autogel** panel on the right guides you from top to bottom.
    - Sample bands outside it are marked `size_in_range = False` and listed as a warning.
    - The gel-type ranges are common guidelines. Adjust them to your buffer and run conditions.
 5. Click **Calibrate & quantify**.
-6. If the number of detected marker bands differs from the ladder (dust, or a band too faint or
-   run off), autogel tries every possible assignment and picks the one that gives the smoothest
-   size curve. Where the ladder has masses, it also checks that bright bands match the bright
-   reference bands. The warning says which band it ignored or assumed missing: check it, and
-   add or delete marker bands if it guessed wrong. Doublets such as NEB's 500/517 bp count as
-   **one** band.
+6. autogel pairs the marker bands with the ladder sizes even when they don't match one to one:
+   - extra bands (dust, the wells, the dye front) are ignored
+   - missing sizes (a band too faint, run off, or swallowed by a bright neighbour) are skipped
+   - both can happen in the same lane, anywhere
+
+   It looks for the pairing in which the spacing between neighbouring ladder bands changes
+   smoothly from step to step, like on a real gel. Where the ladder has masses, the brightness
+   per ng must also change smoothly. The warning says which bands it ignored and which sizes it
+   assumed missing: check it, and add or delete marker bands if it guessed wrong. Doublets
+   such as NEB's 500/517 bp count as **one** band.
 7. **Smiling gels** (outer lanes run slower than the middle): with markers only at the two edges,
    sizes in the middle lanes can be off by 5–10 %. Load a marker in a middle lane as well (e.g.
    lanes `1, 10, 20`). Sizes are then interpolated between neighbouring markers, which brought
@@ -555,7 +559,7 @@ Options of `run`:
 - **Data:** the GelGenie paper's ladder gels, where every band's amount is known, with the
   paper's own protocol and published results.
 - **Median error of the predicted DNA amount per lane** (NEB 1 kb Plus / Invitrogen 1 Kb Plus):
-  - autogel fully automatic: 26 % / 28 %, like raw GelAnalyzer (26 % / 27 %) and Image Studio
+  - autogel fully automatic: 23 % / 28 %, like raw GelAnalyzer (26 % / 27 %) and Image Studio
     (24–32 % / 26–27 %)
   - on the lanes where all ladder bands were found, compared on exactly the same lanes:
     autogel 15 % / 10 %, manual segmentation 17 % / 13 %, GelAnalyzer with background

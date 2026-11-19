@@ -11,6 +11,7 @@ ALWAYS check the presets against the datasheet of the lot you use.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -353,6 +354,91 @@ class MarkerCalibration:
                 "masses": self.masses, "volumes": self.volumes, "warnings": self.warnings}
 
 
+# Ladder alignment (D29). Two neighbouring steps of a real ladder have nearly the same spacing
+# per log(size) (pixels per decade change by ~20 % from step to step; 95 % within 50 %) and
+# nearly the same brightness per ng (~15 %). A merged pair, a missed band, a well or dye-front
+# band breaks one of these locally - also where a global curve would just bend around it.
+ALIGN_RATE_SD = 0.4        # log ratio of consecutive spacings counted as one "standard deviation"
+ALIGN_BRIGHT_SD = 0.2      # same for log(volume / ng) between neighbours
+ALIGN_BRIGHT_W = 0.25      # weight of the brightness term (when masses are known)
+ALIGN_SKIP_BAND = 6.0      # cost of leaving a detected band unassigned (dust, well, dye front)
+ALIGN_SKIP_SIZE = 5.0      # cost of a ladder size without band (missed, merged, run off)
+ALIGN_CAP = 9.0            # one bad step never costs more than this
+ALIGN_MAX_GAP = 3          # at most 3 bands or sizes skipped in a row
+# assign_marker also runs the classic search and keeps it where its curve is smoother: by 10 %,
+# or up to 1.5x rougher when it uses more bands (clean, evenly curved ladders, e.g. a merged
+# pair right between its two sizes, or bands only a few pixels apart)
+HYBRID_RATIO = 0.9
+HYBRID_MORE = 1.5
+
+
+def _align(ys: list[float], sizes: list[float], masses=None, vols=None) -> list[tuple[int, int]]:
+    """Best monotone pairing (band index, size index) of sorted bands with the ladder.
+
+    Dynamic programming over the last two pairs: each step costs the change of spacing per
+    log(size) against the previous step and, with masses, the change of brightness per ng;
+    unpaired bands and sizes cost a fixed penalty. About 0.1 s for 20 bands x 20 sizes."""
+    m, n = len(ys), len(sizes)
+    lg = [math.log10(float(s)) for s in sizes]
+    lb = None
+    if vols is not None and masses is not None and len(masses) == n:
+        lb = [[math.log(max(float(v), 1e-9)) - math.log(max(float(w), 1e-9)) for w in masses] for v in vols]
+    cap, g_ = ALIGN_CAP, ALIGN_MAX_GAP + 1
+    inv_r, inv_b, wb = 1.0 / ALIGN_RATE_SD, 1.0 / ALIGN_BRIGHT_SD, ALIGN_BRIGHT_W
+    sb, ss = ALIGN_SKIP_BAND, ALIGN_SKIP_SIZE
+
+    def bright(i0, j0, i1, j1):
+        if lb is None:
+            return 0.0
+        x = (lb[i1][j1] - lb[i0][j0]) * inv_b
+        return wb * min(x * x, cap)
+
+    # best[(i1, j1)][(i0, j0)] = (cost, pair before (i0, j0))
+    best: dict = {}
+    for i0 in range(m):
+        for j0 in range(n):
+            c0 = i0 * sb + j0 * ss
+            for i1 in range(i0 + 1, min(m, i0 + g_ + 1)):
+                for j1 in range(j0 + 1, min(n, j0 + g_ + 1)):
+                    c = c0 + (i1 - i0 - 1) * sb + (j1 - j0 - 1) * ss + bright(i0, j0, i1, j1)
+                    d = best.setdefault((i1, j1), {})
+                    if (i0, j0) not in d or c < d[(i0, j0)][0]:
+                        d[(i0, j0)] = (c, None)
+    for i1 in range(m):
+        for j1 in range(n):
+            d = best.get((i1, j1))
+            if not d:
+                continue
+            for (i0, j0), (c, _) in list(d.items()):
+                r1 = (ys[i1] - ys[i0]) / (lg[j0] - lg[j1])
+                if r1 <= 0:
+                    continue
+                for i2 in range(i1 + 1, min(m, i1 + g_ + 1)):
+                    dy = ys[i2] - ys[i1]
+                    if dy <= 0:
+                        continue
+                    for j2 in range(j1 + 1, min(n, j1 + g_ + 1)):
+                        x = math.log(dy / (lg[j1] - lg[j2]) / r1) * inv_r
+                        c2 = (c + min(x * x, cap) + (i2 - i1 - 1) * sb + (j2 - j1 - 1) * ss
+                              + bright(i1, j1, i2, j2))
+                        e = best.setdefault((i2, j2), {})
+                        if (i1, j1) not in e or c2 < e[(i1, j1)][0]:
+                            e[(i1, j1)] = (c2, (i0, j0))
+    fin = None
+    for (i1, j1), d in best.items():
+        tail = (m - 1 - i1) * sb + (n - 1 - j1) * ss
+        for prev, (c, _) in d.items():
+            if fin is None or c + tail < fin[0]:
+                fin = (c + tail, (i1, j1), prev)
+    if fin is None:
+        return []
+    pairs, cur, prev = [fin[1]], fin[1], fin[2]
+    while prev is not None:
+        pairs.append(prev)
+        cur, prev = prev, best[cur][prev][1]
+    return pairs[::-1]
+
+
 def _fit_quality(ys, sizes, vols=None, masses=None) -> float:
     """Lower is better: roughness of log10(size) vs migration (cubic fit residual, relative to
     the ladder's span) plus, if masses are known, how badly band brightness disagrees with them."""
@@ -373,15 +459,18 @@ def _fit_quality(ys, sizes, vols=None, masses=None) -> float:
 
 
 def assign_marker(band_ys: list[float], sizes: list[float], masses: list[float] | None = None,
-                  volumes: list[float] | None = None, max_skip: int = 3
+                  volumes: list[float] | None = None, max_skip: int = 3, method: str = "align"
                   ) -> tuple[list[float], list[float], list[float] | None, list[str]]:
     """Pair detected marker bands with ladder sizes.
 
-    Equal counts -> direct pairing (top -> bottom). If counts differ by up to ``max_skip``,
-    every way of dropping the surplus detected bands (dust, artefacts) or ladder sizes (bands
-    not resolved / run off) is tried, and the assignment giving the smoothest size-vs-migration
-    curve (and, with known masses, the best brightness match) wins. A warning always says
-    what was done so the user can check it.
+    ``align`` (default, 5+ bands and sizes): :func:`_align` pairs bands and sizes so that the
+    spacing per log(size) - and, with masses, the brightness per ng - changes smoothly from step
+    to step. Extra bands (dust, well, dye front) and missing sizes (missed, merged, run off) may
+    occur together and anywhere.
+    ``combos`` (and fewer than 5): equal counts -> direct pairing (top -> bottom); if counts
+    differ by up to ``max_skip``, every way of dropping the surplus bands or sizes is tried and
+    the smoothest size-vs-migration curve wins.
+    A warning always says what was done so the user can check it.
     """
     order = np.argsort(band_ys)
     ys = [float(band_ys[i]) for i in order]
@@ -389,6 +478,34 @@ def assign_marker(band_ys: list[float], sizes: list[float], masses: list[float] 
     sizes = list(sizes)
     warnings: list[str] = []
     m, n = len(ys), len(sizes)
+    if method == "align" and min(m, n) >= 5:
+        pairs = _align(ys, sizes, masses, vols)
+        if abs(m - n) <= max_skip:
+            y_c, s_c, _, _ = assign_marker(ys, sizes, masses, vols, max_skip=max_skip, method="combos")
+            iy, js = {y: i for i, y in enumerate(ys)}, {s: j for j, s in enumerate(sizes)}
+            classic = [(iy[y], js[s]) for y, s in zip(y_c, s_c)]
+
+            def rough(pp):
+                return _fit_quality([ys[i] for i, _ in pp], [sizes[j] for _, j in pp],
+                                    [vols[i] for i, _ in pp] if vols else None,
+                                    [masses[j] for _, j in pp] if masses else None)
+            if classic != pairs and len(classic) >= len(pairs):
+                rc, ra = rough(classic), rough(pairs)
+                if rc < HYBRID_RATIO * ra or (len(classic) > len(pairs) and rc < HYBRID_MORE * ra):
+                    pairs = classic
+        if len(pairs) >= 3:
+            used_b = {i for i, _ in pairs}
+            used_s = {j for _, j in pairs}
+            dropped = [ys[i] for i in range(m) if i not in used_b]
+            missing = [sizes[j] for j in range(n) if j not in used_s]
+            if dropped:
+                warnings.append(f"Marker: {m} bands detected, ladder has {n}. Ignored the band(s) at row(s) "
+                                f"{', '.join(f'{y:.0f}' for y in dropped)} (best fit) - please check.")
+            if missing:
+                warnings.append(f"Marker: {len(pairs)} of {n} ladder bands found; assumed missing: "
+                                f"{', '.join(f'{s:g}' for s in missing)} (best fit) - please check.")
+            return ([ys[i] for i, _ in pairs], [sizes[j] for _, j in pairs],
+                    [masses[j] for _, j in pairs] if masses else None, warnings)
     if m == n:
         return ys, sizes, (list(masses) if masses else None), warnings
     from itertools import combinations
@@ -449,7 +566,7 @@ def suggest_ladders(band_ys: list[float], volumes: list[float] | None = None, un
         if abs(m - n) > max_skip or n < 4:
             continue
         ref = e.get("masses") or e.get("relative_intensity")
-        y_a, s_a, r_a, _ = assign_marker(ys, sizes, ref, vols, max_skip=max_skip)
+        y_a, s_a, r_a, _ = assign_marker(ys, sizes, ref, vols, max_skip=max_skip, method="combos")
         if len(s_a) < 4:
             continue
         shape = _fit_quality(y_a, s_a)

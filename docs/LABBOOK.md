@@ -70,6 +70,7 @@ replayable log.
 | D26 | Learned models only with a fair split (GelGenie train/val vs. test + external labs), as information first, deletions opt-in, never in marker lanes | A model evaluated on its training data looks better than it is; faint ladder bands must never be removed silently |
 | D27 | AI second opinion via ONNX + onnxruntime, optional extra, model downloaded on request | PyTorch (~200 MB) would break the "old laptop" goal; nothing leaves the computer |
 | D28 | Touching-band peak fit only when R² ≥ 0.97 (was 0.9); background unchanged | On the GelGenie ladder gels the default rolling ball beat every other radius/method; mediocre Gaussian fits of real (tailed) bands cost NEB 1.25 points, Thermo neutral |
+| D29 | Marker bands paired with the ladder by local alignment (spacing and brightness per ng change smoothly step to step), classic search kept where clearly smoother; no ladder-guided band splitting/adding | Real ladder lanes: wells, dye front, merged pairs and misses occur together; a global curve bends around them. Splitting/adding bands gave no net gain |
 
 ## 4. Test material
 
@@ -194,7 +195,7 @@ without a GPU, not made for gels).
 
 | Method | NEB lanes | NEB median | Thermo lanes | Thermo median |
 |---|---|---|---|---|
-| autogel, fully automatic (detection + ladder assignment) | 100 | 26.1 % | 180 | 27.6 % |
+| autogel, fully automatic (detection + ladder assignment) | 100 | 22.7 % (26.1 before D29) | 180 | 27.6 % |
 | autogel, bands identified via the hand outlines | 33 | 15.1 % | 68 | 10.1 % |
 | Manual segmentation (paper) | 102 | 17.8 % | 180 | 24.8 % |
 | GelAnalyzer, background corrected (paper) | 102 | 17.5 % | 180 | 27.2 % |
@@ -220,9 +221,10 @@ without a GPU, not made for gels).
     GelAnalyzer and Image Studio, and level with GelAnalyzer with background correction
     (15.1 vs 14.7 %, 10.1 vs 9.5 %). The large gap in the first table (10 vs 25 % on Thermo) is mostly lane
     selection, not a better method.
-  - Fully automatic, autogel is level with all published tools on the Thermo gels and with raw
-    GelAnalyzer / Image Studio on the NEB gels, where it trails the manually guided methods.
-    Missed or merged ladder bands shift the size assignment.
+  - Fully automatic, autogel is level with all published tools on the Thermo gels. On the NEB
+    gels it is better than raw GelAnalyzer and Image Studio (22.7 % since D29, 26.1 % before)
+    but still trails the manually guided methods (~18 %); the remaining gap is mostly the
+    900 bp band swallowed by the bright 1000 bp band and missed faint bands.
 
 **Background and peak fit tuned on the ladder gels (user request: try GelAnalyzer's correction)**
 - GelAnalyzer's best variant in the paper is a rolling ball on the lane profile; autogel's
@@ -256,6 +258,50 @@ without a GPU, not made for gels).
 - **Decision (D28):** `DECONV_MIN_R2 = 0.97` (was 0.9). Clean doublets (simulated test: still
   fitted) keep the benefit; poorly fitting real bands fall back to the valley split. Detection
   is unchanged (the fit only changes volumes).
+
+**Ladder band assignment for the fully automatic route (user request: improve it, D29)**
+- **Diagnosis** on the 280 ladder lanes, against the hand outlines:
+  - In lanes with complete outlines, a wrong size assignment caused the large errors (NEB:
+    median 52 % when wrong vs 14 % when right; 12 of 44 lanes wrong). Measurement was fine.
+  - Causes: bands at the wells and the dye front, often several (24_NEB lane 6: all 19 ladder
+    bands found plus 4 extras; the old search allowed at most 3 and then paired top -> bottom,
+    so every size was wrong); the bright 1000 bp NEB band swallowing 900 bp (22 lanes); a
+    merged pair plus a well band giving the ladder's count, so direct pairing shifted the top.
+- **Tried and rejected:**
+  - global curve + dynamic programming (iterated): too many skips; real migration is not one
+    smooth cubic over 100 bp – 10 kb, so true bands looked like outliers
+  - beam search over the classic score: too slow (minutes per gel)
+  - ladder-guided refinement (split a band where the ladder expects two, add a band where a
+    peak sits at an expected size): median NEB 22.7 -> 25.1 %, Thermo 27.4 -> 26.8 %, paired
+    not significant. A faint band split off a bright one can't be measured reliably; reverted.
+- **Chosen (`markers._align`):** dynamic programming over the last two pairs. Each step costs
+  the change of spacing per log(size) against the previous step (measured on true matches:
+  ±21 % typical, 95 % within 52 %) and, with masses, the change of brightness per ng (±14 %);
+  each unpaired band costs 6, each unpaired size 5; at most 3 skipped in a row. Bands and sizes
+  may be skipped together and anywhere. About 0.1 s per lane.
+  The classic search is still run and kept where its curve is clearly smoother (by 10 %, or up
+  to 1.5x rougher when it uses more bands); this keeps clean, evenly curved ladders (simulated)
+  at least as good as before. `suggest_ladders` keeps the classic search (speed).
+- **Settings** chosen on assignment precision/recall, not on the quantitation error: a stronger
+  brightness weight lowered the error further (NEB 18 %) only by dropping bands that disagree
+  with the masses (14.6 of 19 used) - grading itself on easy bands. The chosen setting uses as
+  many bands as before.
+- **Result** (all 280 lanes; per band against the hand outlines in the 116 complete lanes):
+
+| | NEB precision | NEB recall | NEB median error | Thermo precision | Thermo recall | Thermo median |
+|---|---|---|---|---|---|---|
+| before | 0.861 | 0.840 | 26.1 % | 0.978 | 0.973 | 27.6 % |
+| D29 | **0.979** | **0.946** | **22.7 %** | 0.987 | 0.982 | 27.6 % |
+
+  Paired per lane: NEB 26 better / 9 worse (mean −5.5 points, p < 0.001), Thermo 13 / 11
+  (n.s.); bands used 18.0 -> 17.8 (NEB), 16.7 -> 16.6 (Thermo).
+- **Synthetic check over the whole library** (83 ladders with 5+ sizes, curved migration): new
+  vs. old right: perfect 83/83 vs 83, one band missing 82 vs 82, dye-front band 83 vs 83,
+  merged pair 56 vs 54, position noise 83 vs 83. Slowest call 0.2 s (24 sizes).
+- **Tests:** wells + dye front beyond 3 extras; merged pair + well band (both fail on the old
+  code).
+- **Evaluation now as a user:** `eval_quantitation.py` marks every lane as a ladder lane with
+  the known ladder and uses `calibrate()`, instead of calling the pairing directly.
 
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
