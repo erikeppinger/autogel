@@ -551,6 +551,17 @@ Options of `run`:
   **Rotate 90°** if not; the numbers above assume that correction.
 - The last column is a lower bound, because faint bands and smears were often not outlined.
 
+**Compared with other tools on true DNA amounts:**
+- **Data:** the GelGenie paper's ladder gels, where every band's amount is known, with the
+  paper's own protocol and published results.
+- **NEB 1 kb Plus lanes, median error of the predicted DNA amount per lane:**
+  - autogel measuring bands identified as in the paper: 16 %
+  - manual segmentation: 18 %
+  - GelAnalyzer with background correction: 18 %
+  - autogel fully automatic: 27 %, like raw GelAnalyzer (26 %) and Image Studio (24–32 %)
+- **Practical consequence:** check the ladder bands. When all ladder bands are found, autogel's
+  numbers are as good as careful manual work.
+
 **In practice:**
 - Always look over the detected bands of a new gel type.
 - Delete spurious ones and add missed ones; both take a click, and the report records it.

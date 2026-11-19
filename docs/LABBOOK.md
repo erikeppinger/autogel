@@ -172,12 +172,35 @@ without a GPU, not made for gels).
   offline, CRYPT_E_REVOCATION_OFFLINE). autogel downloads with Python and certifi instead.
 - **Installers:** `-WithAI` / `--with-ai` options; the installer CI installs with the AI extra.
 
-**Tool comparison prepared:**
-- The GelGenie paper (open access, CC-BY) reports quantitation errors of GelAnalyzer, manual
-  segmentation and its networks on the quantitation ladder gels. Every lane is a ladder with
-  known DNA masses (NEB N0550, Thermo 10787018).
-- The protocol: per lane, 5 bands are held out, a linear fit is made on the rest, and the
-  hidden masses are predicted, 80 times. It can be reproduced with autogel (next step).
+**Tool comparison against true DNA amounts (`tools/eval_quantitation.py`)**
+- **Source:** GelGenie paper (Aquilina et al., Nat Commun 2025, CC-BY): quantitation ladder gels
+  where every lane holds a ladder with known band masses. The paper's source data gives
+  per-lane errors for manual segmentation, GelAnalyzer and LI-COR Image Studio.
+- **Protocol** exactly as in their notebook:
+  - per lane, fit mass = a·volume + b on all bands but 5 hidden ones
+  - error = |true − predicted| / true, averaged over 80 hidden sets (seed 12)
+  - lane 2 of gels 14/16/17 excluded; only their 15 NEB gels
+- **Our first run** also included gels 25–28 and 30, which the paper didn't evaluate, and 145
+  lanes instead of their 102. That gave a median of 48 %; with their gel list it is 100 lanes.
+- **NEB Quick-Load Purple 1 kb Plus (N0550)** lanes, median (middle half) of the per-lane error:
+
+| Method | Lanes | Median | IQR |
+|---|---|---|---|
+| autogel, bands identified via the hand outlines (measurement only) | 33 | **16.1 %** | 13–24 % |
+| Manual segmentation (paper) | 102 | 17.8 % | 14–22 % |
+| GelAnalyzer, background corrected (paper) | 102 | 17.5 % | 14–24 % |
+| autogel, fully automatic (detection + ladder assignment) | 100 | 26.7 % | 20–49 % |
+| GelAnalyzer, raw (paper) | 102 | 26.1 % | 17–36 % |
+| Image Studio, 3 background variants (paper) | 102 | 24–32 % | 20–42 % |
+
+- **Reading:**
+  - autogel's band measurement is as good as the best published methods. Caveat: only the 33
+    lanes where every outlined band maps uniquely onto one autogel band, probably the cleaner
+    ones; the paper's values can't be matched lane by lane.
+  - Fully automatic, autogel equals raw GelAnalyzer and Image Studio but trails the manually
+    guided methods. Missed or merged ladder bands shift the size assignment.
+- **Not done yet:** the Thermo 1 Kb Plus lanes (180 in the paper). The per-band masses of
+  10787018 are only in the vendor manual (PDF), not on the product page, so not verified yet.
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
 User requests: test the new features on real data; use APIs instead of manual downloads; don't
