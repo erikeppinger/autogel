@@ -102,6 +102,68 @@ replayable log.
 
 ## 6. Change log
 
+### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
+User requests: test the new features on real data; use APIs instead of manual downloads; don't
+store data in git; tell why a figure set is 5 GB.
+
+**Test data (not in git; `python tools/get_testdata.py` rebuilds it, `--verify` checks it)**
+- **Zenodo sets**, checked against Zenodo's MD5 checksums:
+  - GelGenie: two more hand-labelled subsets (stella 26 gels, matthew_gels_2 85 gels), 206 gels
+    in total
+  - Western blots with the authors' densitometry (18338155)
+  - Western-blot figure source data (14291079)
+- **`tools/oa_testset.py`:** CC-BY open-access papers with raw gel/blot images, via the PLOS
+  search API and the Europe PMC REST API.
+  - Supplements are found by their captions; data files with the authors' numbers are kept too.
+  - Retracted papers are skipped.
+  - Currently 49 papers (24 PLOS + 25 Europe PMC; Western blot, RNA, DNA) and 915 pictures.
+  - SHA-256 checksums of all 227 files are in `tools/testdata_checksums.json`.
+- **Why not via the institute's subscriptions:** that content may not be redistributed (a
+  community benchmark must be rebuildable by anyone), and bulk downloads from publisher websites
+  can get the whole institute's IP range blocked. Official TDM APIs only, if ever.
+- **Why not in git:** GitHub refuses files > 100 MB, repositories should stay < 1–5 GB, Git LFS
+  is free only up to 1 GB, and every clone would carry the data forever.
+- **The 4.9 GB figure set (14291079):** 13 figure pages at 1200 dpi, CMYK (4 bytes per pixel),
+  uncompressed. That's 10,000 × 12,700 px × 4 B ≈ 500 MB per page; the ZIP holds them in 110 MB.
+  They're printer files, not raw blot images; the unpacked copies were deleted.
+
+**Robustness (`tools/smoke_images.py`)**
+- 238 real-world pictures, **0 crashes**, median 0.8 s per picture.
+- **Bug, fixed:** CMYK images (journal figure files) were read inverted (correlation −0.99 with
+  the true grey image). They are now converted via Pillow.
+- **Memory:** about 50 MB per megapixel; 100-MP figure scans needed up to 7.5 GB. Images over
+  25 MP are now reduced by block averaging (relative values within 5 % of full size in the test).
+
+**206 hand-labelled gels**
+- autogel finds 85 % of the bands on the 111 new gels too.
+- **Benchmark fix:** its orientation reference weighted the hand outlines by area, so a few big
+  round blobs or a merged ladder outline could call an upright gel "sideways" (e.g.
+  matthew_gels_2/25). Now outlines are counted and only a clear majority is judged: 9 errors on
+  196 judged gels (7 distinct; 10 without a clear reference).
+- **Orientation remaining errors:** close calls (warning shown) and gels with a ruler and
+  notched tray bars in the picture. The ruler's ticks look like a sideways well row, and digits
+  are taller than wide.
+  - Tried: deciding orientation only on the cropped gel region → 11 errors instead of 9.
+    Rejected.
+
+**Western blots vs. the authors (Zenodo 18338155, photographed X-ray films, 36 photos)**
+- Default settings: agreement (Spearman ρ) 0.24 (actin) / 0.39 (calponin) / −0.05 (cytokeratin).
+- **Cause:** lane placement. The frame, film edge and pen marks add peaks to the lane profile,
+  and the lanes on these films are irregular (gaps 45–90 px), so no equidistant comb fits.
+- **Measurement itself is fine:** where lanes sit right, duplicate lanes differ by a median of
+  6 % in autogel vs. 15 % in the authors' values.
+- **Tried: lanes at the n clearest peaks instead of the comb.** No gain on the films, and lab
+  gels lost recall (81 → 77 %). Removed.
+- **New: `find_gel_region` / auto-crop** (analysed region = the uniform region around the
+  centre).
+  - On the films: ρ 0.28 / 0.39 / **0.52**; per-patient ratios 0.36 / 0.43 (were 0.23 / 0.17).
+  - On the 206 gels: mixed. nathan +4 points, external +1, stella −5.5, matthew −2.7, ladder
+    −1.5; 22 gels better and 19 worse, a few by −70 points (part of the gel cut off).
+  - **Decision: opt-in** (Expert, *only the gel*), with an editable *analysed region* rectangle
+    in the viewer.
+- **Checked:** ruff clean; new tests for CMYK, large images, auto-crop / manual crop (core and
+  GUI).
+
 ### 0.5.0.dev0 – 2026-11-18 – branch `develop`: Western blots, channels, RNA, more ladders
 User goal: an open-source community tool for all gel types. The new features are developed on the
 branch `develop`; `main` stays at the released 0.4.1 until user feedback is in, and the two are

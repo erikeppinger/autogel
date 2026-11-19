@@ -519,3 +519,35 @@ def test_very_large_image_is_reduced(tmp_path):
     # an added image of the same (full) size is reduced the same way
     k = ga.add_image(big, name="copy")
     assert ga.gel.channels[k].shape == ga.data.shape
+
+
+def _gel_in_frame(tmp_path):
+    """Gel in the middle of a bright frame (tray / film edge) with lane-like bright stripes."""
+    p = make_gel(str(tmp_path / "g.tif"), lanes=standard_lanes(), noise=20)
+    g = tifffile.imread(p).astype(np.float32)
+    H, W = g.shape
+    big = np.full((H + 400, W + 600), 300, np.float32)       # dark tray around the gel
+    big[200:200 + H, 300:300 + W] = g
+    for x in (60, 120, 180, W + 360, W + 420, W + 480):      # stripes on the frame
+        big[:, x:x + 30] += 6000
+    out = str(tmp_path / "framed.tif")
+    tifffile.imwrite(out, np.clip(big, 0, 65535).astype(np.uint16))
+    return out, (200, 200 + H, 300, 300 + W)
+
+
+def test_auto_crop_finds_the_gel_and_ignores_the_frame(tmp_path):
+    from autogel.analysis import find_gel_region
+    path, (y0, y1, x0, x1) = _gel_in_frame(tmp_path)
+    ga = GelAnalysis(path, Params(n_lanes=10, auto_crop=True))
+    ry0, ry1, rx0, rx1 = ga.region()
+    assert abs(ry0 - y0) < 40 and abs(ry1 - y1) < 40 and abs(rx0 - x0) < 40 and abs(rx1 - x1) < 40
+    ga.detect_lanes()
+    assert all(x0 - 10 < l.x < x1 + 10 for l in ga.lanes)
+    xs = np.array([l.x - x0 for l in ga.lanes])
+    assert np.allclose(xs, 140 + 80 * np.arange(10), atol=6)
+    # a gel that fills the image is not cropped
+    full = make_gel(str(tmp_path / "full.tif"), lanes=standard_lanes())
+    assert find_gel_region(tifffile.imread(full).astype(np.float32)) is None
+    # a crop set by hand wins and is logged
+    ga.set_crop([y0, y1, x0 + 80, x1])
+    assert ga.region()[2] == x0 + 80 and ga.log[-1]["step"] == "set_crop"

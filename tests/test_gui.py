@@ -611,3 +611,21 @@ def test_rna_checkbox_shows_ratio(ui, tmp_path):
     w.quantify()
     assert "RNA 28S/18S" in w.lbl_cal.text()
     assert "rna_28s_18s" in w.ga.lanes_table()
+
+
+def test_auto_crop_checkbox_and_region_drag(ui, tmp_path):
+    w, v, msgs, _ = ui
+    from .test_core import _gel_in_frame
+    path, (y0, y1, x0, x1) = _gel_in_frame(tmp_path)
+    w.open_image(path)
+    w.btn_expert.setChecked(True)
+    w.chk_crop.setChecked(True)
+    w.sp_lanes.setValue(10)
+    w.detect_lanes()
+    assert w.ga.params.auto_crop and len(v.layers["analysed region"].data) == 1
+    assert all(x0 - 10 < l.x < x1 + 10 for l in w.ga.lanes)
+    rect = np.asarray(v.layers["analysed region"].data[0], float)
+    v.layers["analysed region"].data = [rect + np.array([0, 40])]      # drag 40 px to the right
+    pump()
+    assert w.ga.params.crop is not None and abs(w.ga.region()[2] - (rect[:, 1].min() + 40)) < 2
+    assert any(e["step"] == "set_crop" for e in w.ga.log)

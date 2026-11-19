@@ -159,6 +159,18 @@ The **autogel** panel on the right guides you from top to bottom.
 
    Changes apply about half a second after you stop editing.
 
+   **Only the gel (auto-crop)** (Expert, off by default): for photos where the gel or membrane
+   doesn't fill the picture (photographed X-ray film, a frame, the tray, labels or pen marks
+   around it).
+   - autogel then looks for lanes only inside the gel. The analysed region is shown as a grey
+     rectangle (layer *analysed region*); drag or resize it to set it by hand. Lanes and bands are
+     then detected again.
+   - On photographed Western-blot films it clearly improved agreement with the authors'
+     measurements. On ordinary gel photos it helps some and hurts others (it can cut off part of
+     a gel), which is why it is off by default.
+   - Very large images (over 25 megapixels, e.g. print-resolution figure scans) are analysed at
+     reduced resolution to save memory; a note says so. Relative values are unaffected.
+
    **Curved lanes** (lanes that fan out towards the bottom, or a photo taken at an angle):
    - Tick *follow curved lanes* (Expert) and detect lanes again. autogel estimates for the whole
      gel how far the lanes drift sideways with depth, and draws bent lanes as polygons.

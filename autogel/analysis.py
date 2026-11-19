@@ -28,6 +28,44 @@ BEND_MIN_FRAC = 0.15
 SHOULDER_D2_SNR = 6.0
 
 
+def find_gel_region(a: np.ndarray) -> tuple[int, int, int, int] | None:
+    """Rectangle of the gel / membrane: the largest region around the image centre whose
+    background looks like the centre's. Tray, frame, film edge and table around it differ.
+    Returns None when that region is (almost) the whole image."""
+    H, W = a.shape
+    f = max(1, min(H, W) // 300)
+    small = a[: (H // f) * f, : (W // f) * f].reshape(H // f, f, W // f, f).mean((1, 3))
+    small = ndimage.median_filter(small, size=5)             # bands are thin: removed by the filter
+    h, w = small.shape
+    centre = small[h // 4: 3 * h // 4, w // 4: 3 * w // 4]
+    ref = float(np.median(centre))
+    spread = float(np.median(np.abs(centre - ref))) * 1.4826 + 1e-9
+    rng = float(np.percentile(small, 99) - np.percentile(small, 1)) + 1e-9
+    tol = max(5 * spread, 0.12 * rng)
+    mask = np.abs(small - ref) < tol
+    mask = ndimage.binary_closing(mask, iterations=3)
+    mask = ndimage.binary_fill_holes(mask)
+    lab, n = ndimage.label(mask)
+    if n == 0:
+        return None
+    c = lab[h // 2, w // 2]
+    if c == 0:
+        sizes = ndimage.sum(mask, lab, range(1, n + 1))
+        c = int(np.argmax(sizes)) + 1
+    comp = lab == c
+    # robust rectangle: rows / columns where most of the line belongs to the region
+    rows = np.where(comp.mean(1) > 0.5 * comp.mean(1).max())[0]
+    cols = np.where(comp.mean(0) > 0.5 * comp.mean(0).max())[0]
+    if not len(rows) or not len(cols):
+        return None
+    y0, y1, x0, x1 = rows[0] * f, (rows[-1] + 1) * f, cols[0] * f, (cols[-1] + 1) * f
+    if (y1 - y0) > 0.95 * H and (x1 - x0) > 0.95 * W:
+        return None                                          # gel fills the image: nothing to crop
+    if (y1 - y0) < 0.3 * H or (x1 - x0) < 0.3 * W:
+        return None                                          # implausibly small: don't trust it
+    return int(y0), int(y1), int(x0), int(x1)
+
+
 # ------------------------------------------------------------------ data model
 @dataclass
 class Params:
@@ -95,6 +133,10 @@ class Params:
     # Opt-in: on the lab's straight Test gels, where lower strips hold only the two ladder lanes,
     # the estimate still found a false drift - so it is off unless the user switches it on.
     curved_lanes: bool = False
+    # analysis region: only the gel / membrane, not the tray, frame or film edge around it.
+    # crop = [y0, y1, x0, x1] set by the user; auto_crop = find it automatically
+    crop: list[float] | None = None
+    auto_crop: bool = False
     # unresolved doublets (a shoulder, no valley): split a band in two when the profile shows two
     # curvature minima AND two Gaussians fit much better than one
     split_shoulders: bool = False
@@ -289,8 +331,11 @@ class GelAnalysis:
         # structures (bands, wells) and removes long vertical ones (tray edges,
         # smears, illumination gradients).
         bandimg = self._band_feature_image()
-        columns = self.column_bounds(bandimg)
-        tiers = self.tier_bounds()
+        cy0, cy1, cx0, cx1 = self.region()
+        columns = [(max(ca, cx0), min(cb, cx1)) for ca, cb in self.column_bounds(bandimg)]
+        tiers = [(max(ra, cy0), min(rb, cy1)) for ra, rb in self.tier_bounds()]
+        columns = [c for c in columns if c[1] - c[0] > 20]
+        tiers = [t for t in tiers if t[1] - t[0] > 20]
         n_gels = len(columns) * len(tiers)
         lanes: list[Lane] = []
         info = []
@@ -305,7 +350,7 @@ class GelAnalysis:
                 width = 0.8 * spacing
                 well = ra + self._find_well(a[ra:rb, ca:cb], peaks, width)
                 y0 = max(float(ra), well - 10)
-                y1 = float(rb - 1 - (int(H * .005) if t == len(tiers) - 1 else 2))
+                y1 = float(rb - 1 - (int(H * .005) if t == len(tiers) - 1 and rb == H else 2))
                 prefix = chr(65 + t * len(columns) + col) if n_gels > 1 else ""
                 lanes += [Lane(x=float(ca + p), width=float(width), y0=y0, y1=y1, name=f"{prefix}{i + 1}",
                                tier=t, column=col) for i, p in enumerate(peaks)]
@@ -403,6 +448,31 @@ class GelAnalysis:
         if n:
             self._profiles = {}
         return n
+
+    def region(self) -> tuple[int, int, int, int]:
+        """(y0, y1, x0, x1) of the part of the image that is analysed: the user's crop, the
+        automatically found gel/membrane (Params.auto_crop) or the whole image."""
+        H, W = self.data.shape
+        p = self.params
+        if p.crop:
+            y0, y1, x0, x1 = (int(round(v)) for v in p.crop)
+        elif p.auto_crop:
+            if getattr(self, "_auto_region", None) is None:
+                self._auto_region = find_gel_region(self.data)
+            y0, y1, x0, x1 = self._auto_region or (0, H, 0, W)
+        else:
+            return 0, H, 0, W
+        y0, y1 = max(0, min(y0, y1)), min(H, max(y0, y1))
+        x0, x1 = max(0, min(x0, x1)), min(W, max(x0, x1))
+        if y1 - y0 < 40 or x1 - x0 < 40:
+            return 0, H, 0, W
+        return y0, y1, x0, x1
+
+    def set_crop(self, crop: list[float] | None, reason: str = "user"):
+        self.params.crop = [float(v) for v in crop] if crop else None
+        msg = ("whole image" if not crop else
+               "analysed region rows {:.0f}-{:.0f}, columns {:.0f}-{:.0f}".format(*crop))
+        self._log("set_crop", {"crop": self.params.crop, "reason": reason}, msg)
 
     def column_bounds(self, bandimg: np.ndarray | None = None) -> list[tuple[int, int]]:
         """Column ranges of gels lying side by side. Manual splits win; otherwise searched."""

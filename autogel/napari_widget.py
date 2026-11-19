@@ -364,6 +364,12 @@ class AutogelWidget(QWidget):
                                    "(fanned-out lanes). Untick for strictly straight lanes.")
         f.addRow(self.chk_curved)
         self._expert_items.append((f, self.chk_curved))
+        self.chk_crop = QCheckBox("only the gel (auto-crop)")
+        self.chk_crop.setChecked(Params.auto_crop)
+        self.chk_crop.setToolTip("Ignore the tray, film edge or frame around the gel / membrane. The analysed "
+                                 "region is shown as a rectangle (layer 'analysed region'); drag or resize it "
+                                 "to set it by hand.")
+        f.addRow(self.chk_crop)
         b = QPushButton("Detect lanes")
         b.clicked.connect(self.detect_lanes)
         f.addRow(b)
@@ -690,6 +696,7 @@ class AutogelWidget(QWidget):
         p.n_tiers = self.sp_tiers.value()
         p.n_columns = self.sp_cols.value()
         p.curved_lanes = self.chk_curved.isChecked()
+        p.auto_crop = self.chk_crop.isChecked()
         p.invert = self.chk_invert.isChecked()
         return p
 
@@ -756,7 +763,8 @@ class AutogelWidget(QWidget):
             self.chk_invert.setChecked(bool(ga.gel.orientation.get("invert")))
             self.chk_invert.blockSignals(False)
             self.sp_angle.setValue(ga.gel.orientation.get("angle", 0.0))
-            for name in ("gel", "saturated", "highlight", "gel splits", "lanes", "bands", "sizes left", "sizes right"):
+            for name in ("gel", "saturated", "highlight", "analysed region", "gel splits", "lanes", "bands",
+                         "sizes left", "sizes right"):
                 if name in self.viewer.layers:
                     self.viewer.layers.remove(name)
             self._fill_channel_combos()
@@ -771,6 +779,9 @@ class AutogelWidget(QWidget):
             lanes = self.viewer.add_shapes(name="lanes", shape_type="rectangle",
                                            edge_color=self.colors["lane"],
                                            face_color="transparent", edge_width=2)
+            region = self.viewer.add_shapes(name="analysed region", shape_type="rectangle",
+                                            edge_color="#999999", face_color="transparent", edge_width=3)
+            region.events.data.connect(lambda e: self._schedule("crop"))
             tiers = self.viewer.add_shapes(name="gel splits", shape_type="line", edge_color="#009E73",
                                            edge_width=4)
             tiers.events.data.connect(lambda e: self._schedule("tiers"))
@@ -835,6 +846,7 @@ class AutogelWidget(QWidget):
         self.chk_rna.blockSignals(False)
         self._fill_channel_combos()
         self.chk_curved.setChecked(p.curved_lanes)
+        self.chk_crop.setChecked(p.auto_crop or bool(p.crop))
         self.chk_deconv.setChecked(p.deconvolve)
         self.chk_shoulder.setChecked(p.split_shoulders)
         if p.marker_preset in PRESETS:
@@ -1016,6 +1028,21 @@ class AutogelWidget(QWidget):
             if unchanged != len(self.ga.lanes) or len(lanes) != len(self.ga.lanes):
                 self.ga.set_lanes(lanes, reason="edited in viewer")
                 lanes_changed = True
+        if "crop" in pending and "analysed region" in self.viewer.layers:
+            shapes = self.viewer.layers["analysed region"].data
+            new = None
+            if len(shapes):
+                y0, x0, y1, x1 = _bbox(shapes[0])
+                new = [y0, y1, x0, x1]
+            cur = list(self.ga.region())
+            if new is not None and [round(v) for v in new] != [round(v) for v in cur]:
+                self.ga.set_crop(new, reason="region moved in viewer")
+                with self._busy("Re-detecting lanes and bands in the new region"):
+                    self.ga.detect_lanes()
+                    self.ga.detect_bands()
+                lanes_changed = True
+            elif new is None and self.ga.params.crop:
+                self.ga.set_crop(None, reason="region deleted in viewer")
         if "tiers" in pending and "gel splits" in self.viewer.layers:
             rows, cols = [], []
             for ln in self.viewer.layers["gel splits"].data:
@@ -1095,6 +1122,13 @@ class AutogelWidget(QWidget):
                 h = float(np.median([l.y1 - l.y0 for l in ga.lanes]))
                 lanes.text = {"string": "{name}", "anchor": "center", "color": col["lane_text"],
                               "size": 8, "translation": [-(h / 2 + 25), 0]}
+            if "analysed region" in self.viewer.layers:
+                rl = self.viewer.layers["analysed region"]
+                rl.data = []
+                H, W = ga.data.shape
+                y0, y1, x0, x1 = ga.region()
+                if (y0, y1, x0, x1) != (0, H, 0, W):
+                    rl.add_rectangles([_rect(y0, x0, y1, x1)], edge_color="#999999", edge_width=3)
             if "gel splits" in self.viewer.layers:
                 tl = self.viewer.layers["gel splits"]
                 tl.data = []

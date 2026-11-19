@@ -56,6 +56,8 @@ def describe(e: dict) -> str:
                 f"radius {_n(p.get('bg_radius'))} px, min S/N {p.get('min_snr')}]")
     if s == "set_bands":
         return f"Bands edited ({p.get('reason', '')}): {r}"
+    if s == "set_crop":
+        return f"Analysed region ({p.get('reason', '')}): {r}"
     if s == "set_channel":
         return f"Analysed image: {r}"
     if s == "add_image":

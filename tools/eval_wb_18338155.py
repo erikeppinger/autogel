@@ -47,7 +47,7 @@ def patients_from_name(name: str) -> list[str]:
 
 
 def lane_volumes(path: str) -> tuple[list[float], str]:
-    ga = GelAnalysis(path, Params(n_lanes=9))
+    ga = GelAnalysis(path, Params(n_lanes=9, auto_crop=os.environ.get("AUTOGEL_AUTO_CROP") == "1"))
     ga.detect_lanes()
     ga.detect_bands()
     df = ga.quantify()
