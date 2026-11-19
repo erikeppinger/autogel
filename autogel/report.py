@@ -81,6 +81,9 @@ def describe(e: dict) -> str:
         return f"Valid size range: {r}" + (f" ({p['reason']})" if p.get("reason") else "")
     if s == "calibrate":
         return f"Size/mass calibration: {r}"
+    if s == "refine_marker_bands":
+        return (f"Ladder bands found inside neighbouring bands (source `ladder`; used for sizes, not as "
+                f"ng standards): {r}")
     if s == "quantify":
         return f"Quantified: {r}"
     if s == "calibrate+quantify":
@@ -206,7 +209,7 @@ def write_report_md(ga, df, path: str, files: list[str] | None = None):
         rows.append([e["time"].replace("T", " "),
                      e["step"] + (f" (recalculated {n}×)" if n > 1 else ""), describe(e)])
     L.append(_md_table(rows, ["Time", "Step", "What happened"]))
-    n_user = sum(1 for b in ga.bands if b.source != "auto")
+    n_user = sum(1 for b in ga.bands if b.source == "user")
     if n_user:
         L.append(f"\n{n_user} band(s) were added or edited by hand (`source = user` in the table).\n")
 

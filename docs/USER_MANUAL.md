@@ -315,6 +315,12 @@ The **autogel** panel on the right guides you from top to bottom.
    per ng must also change smoothly. The warning says which bands it ignored and which sizes it
    assumed missing: check it, and add or delete marker bands if it guessed wrong. Doublets
    such as NEB's 500/517 bp count as **one** band.
+
+   If a ladder band is expected inside or on the flank of a neighbour's band (e.g. NEB 900 bp on
+   the shoulder of the bright 1000 bp band), autogel fits two peaks there and splits the band.
+   The new part has source `ladder`; it is used for the size curve but not as an ng standard,
+   because its amount is estimated from the fit. Delete it if it is wrong: it will not come back
+   unless you detect bands again.
 7. **Smiling gels** (outer lanes run slower than the middle): with markers only at the two edges,
    sizes in the middle lanes can be off by 5–10 %. Load a marker in a middle lane as well (e.g.
    lanes `1, 10, 20`). Sizes are then interpolated between neighbouring markers, which brought
@@ -529,7 +535,7 @@ Options of `run`:
 | `est_mass_ng`, `mass_out_of_range` | from the ladder mass curve. *Out of range* = outside the ladder masses |
 | `mass_size_corrected` | True if the size-dependent response at this band's size was used (False: size unknown, average response) |
 | `conc_ng_per_ul` | `est_mass_ng / µl loaded` |
-| `source` | `auto` (detected) or `user` (added or edited by you) |
+| `source` | `auto` (detected), `user` (added or edited by you), `ladder` (split off by the ladder-guided fit, see 3.4) or `ai` (added by the AI second opinion) |
 
 ---
 

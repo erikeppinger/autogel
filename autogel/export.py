@@ -92,7 +92,7 @@ def annotated_image(ga: GelAnalysis, path: str, df: pd.DataFrame | None = None):
         l = ga.lanes[b.lane]
         o = l.dx(b.y)
         d.rectangle([l.x0 + o, b.y0, l.x1 + o, b.y1 + 1],
-                    outline="#F0E442" if b.source == "auto" else "#CC79A7", width=1)
+                    outline="#F0E442" if b.source in ("auto", "ladder") else "#CC79A7", width=1)
     # size labels beside the lanes (markers outward, samples to the right), decluttered
     labels = plan_labels(ga, df, set(range(len(ga.lanes))))
     line_h = small.getbbox("0")[3] + 3 if hasattr(small, "getbbox") else 14

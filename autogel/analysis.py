@@ -17,11 +17,15 @@ from scipy import ndimage, signal
 
 from . import __version__
 from .imageio import GelImage, _combine, auto_invert, load_channels, load_gel, orient_channel, reduce
-from .markers import PRESETS, MarkerCalibration, assign_marker
+from .markers import PRESETS, MarkerCalibration, _align, assign_marker
 
 # shoulder splitting (Params.split_shoulders): the smaller part must carry at least this share of the
 # larger one (1:5) - real bands are slightly lopsided and a small Gaussian fits their tail; and the
 # second curvature minimum must stand out of the curvature noise by this factor
+AUTO_SOURCES = ("auto", "ladder")   # bands placed by the program (the peak fit may split them)
+LADDER_SPLIT_RSS = 0.5         # ladder-guided split: two peaks must leave < 50 % of one peak's residual
+LADDER_SPLIT_MIN_SHARE = 0.03  # ... and the hidden band must hold >= 3 % of the pair's fitted area
+LADDER_SPLIT_SHARE_TOL = 2.0   # ... and, with masses, within 2x of the datasheet share
 DECONV_MIN_R2 = 0.97            # touching bands: peak fit used only when it explains this share
 SHOULDER_MIN_SHARE = 0.2
 # curved lanes: a traced bend is applied only above this fraction of the lane width
@@ -145,6 +149,9 @@ class Params:
     # unresolved doublets (a shoulder, no valley): split a band in two when the profile shows two
     # curvature minima AND two Gaussians fit much better than one
     split_shoulders: bool = False
+    # marker lanes: where the ladder expects a band inside a neighbour's band (e.g. NEB 900 bp in
+    # the bright 1000 bp band), fit two peaks there and split (new part: source "ladder")
+    ladder_guided: bool = True
 
 
 @dataclass
@@ -215,6 +222,7 @@ class GelAnalysis:
         self.well_y: float = 0.0
         self.calibrations: list[MarkerCalibration] = []
         self.mass_fit: dict | None = None
+        self._ladder_refined: set[int] = set()     # marker lanes already refined (once per detection)
         self._profiles: dict[int, dict] = {}
         H = self.gel.data.shape[0]
         if self.params.bg_radius is None:
@@ -910,6 +918,7 @@ class GelAnalysis:
     def detect_bands(self, lanes: list[int] | None = None) -> list[Band]:
         idx = range(len(self.lanes)) if lanes is None else lanes
         self.bands = [b for b in self.bands if b.lane not in set(idx)]
+        self._ladder_refined -= set(idx)
         total = rejected = 0
         new: list[tuple[Band, float]] = []
         for i in idx:
@@ -1144,6 +1153,7 @@ class GelAnalysis:
                  list(p.marker_lanes), p.marker_load, p.marker_ref_load)
         if after == before:
             return
+        self._ladder_refined = set()
         if p.marker_channel is not None and list(p.marker_lanes) != before[4]:
             self._profiles = {}
             mk = [L - 1 for L in p.marker_lanes if 0 < L <= len(self.lanes)]
@@ -1169,11 +1179,116 @@ class GelAnalysis:
         self._log("set_size_range", {"min": p.size_min, "max": p.size_max, "reason": reason},
                   "automatic (whole ladder)" if not (lo or hi) else f"{lo or 0:g} - {hi or 'inf'}")
 
+    def refine_marker_bands(self) -> list[str]:
+        """Ladder-guided split of merged marker bands (D30), once per marker lane after detection.
+
+        The lane's bands are paired with the ladder (:func:`markers._align`). A ladder size
+        without band between two paired neighbours gets its row interpolated in log(size). If that
+        row lies inside a neighbour's band (or on its flank, just outside its range), the band may
+        hold both (a bright band with a faint
+        neighbour on its shoulder, e.g. NEB 1000 + 900 bp). Two Gaussians are fitted there, one
+        near the band's peak and one near the expected row (+-4 px). If they leave less than
+        ``LADDER_SPLIT_RSS`` of one Gaussian's residual and the hidden part holds at least
+        ``LADDER_SPLIT_MIN_SHARE`` of the area (with masses: within ``LADDER_SPLIT_SHARE_TOL`` of
+        the datasheet's share), the band is split where the two components are
+        equal; the new part gets source "ladder". Volumes then come from the usual peak fit or
+        valley split of touching bands. Returns what was done (also logged)."""
+        from scipy.optimize import curve_fit
+        p = self.params
+        done: list[str] = []
+        if not (p.ladder_guided and p.marker_sizes and p.marker_lanes) or len(p.marker_sizes) < 5:
+            return done
+        lg = np.log10(np.asarray(p.marker_sizes, float))
+
+        def g1(y, a, m, s_):
+            return a * np.exp(-0.5 * ((y - m) / s_) ** 2)
+
+        def g2(y, a1, m1, s1, a2, m2, s2):
+            return g1(y, a1, m1, s1) + g1(y, a2, m2, s2)
+        for L in p.marker_lanes:
+            i = L - 1
+            if not 0 <= i < len(self.lanes) or i in self._ladder_refined:
+                continue
+            self._ladder_refined.add(i)
+            lane_b = sorted([b for b in self.bands if b.lane == i], key=lambda b: b.y)
+            if len(lane_b) < 5:
+                continue
+            vol = dict(zip(map(id, self.bands), self._volumes()))
+            pairs = _align([b.y for b in lane_b], p.marker_sizes, p.marker_masses, [vol[id(b)] for b in lane_b])
+            if len(pairs) < 5:
+                continue
+            by_size = {j: lane_b[k] for k, j in pairs}
+            pr = self.lane_profile(i)
+            js = sorted(by_size)
+            for a, c in zip(js, js[1:]):
+                if c - a != 2:                       # exactly one size missing between two pairs
+                    continue
+                j, ba, bc = a + 1, by_size[a], by_size[c]
+                y_hat = ba.y + (bc.y - ba.y) * (lg[a] - lg[j]) / (lg[a] - lg[c])
+                host = ba if ba.y0 <= y_hat <= ba.y1 else bc if bc.y0 <= y_hat <= bc.y1 else None
+                lo, hi = (host.y0, host.y1) if host is not None else (0.0, 0.0)
+                if host is None:
+                    # on the flank, just outside the nearer neighbour's range: fit band + flank
+                    near = ba if abs(y_hat - ba.y) <= abs(bc.y - y_hat) else bc
+                    edge = near.y1 if near is ba else near.y0
+                    if abs(y_hat - edge) < 0.5 * abs(y_hat - near.y):
+                        host, reach = near, abs(y_hat - near.y)
+                        other = bc if near is ba else ba
+                        if near is ba:
+                            lo, hi = host.y0, min(y_hat + 0.5 * reach, other.y0 - 1)
+                        else:
+                            lo, hi = max(y_hat - 0.5 * reach, other.y1 + 1), host.y1
+                if host is None or host.source not in AUTO_SOURCES or abs(host.y - y_hat) < 3:
+                    continue
+                sel = (pr["y"] >= lo) & (pr["y"] <= hi)
+                yy, cc = pr["y"][sel], pr["corr"][sel]
+                if len(yy) < 8 or cc.max() <= 0:
+                    continue
+                amax, w = float(cc.max()), max(1.5, (host.y1 - host.y0) / 6)
+                try:
+                    with np.errstate(all="ignore"):
+                        q1, _ = curve_fit(g1, yy, cc, p0=[amax, host.y, w], maxfev=3000)
+                        q2, _ = curve_fit(g2, yy, cc, p0=[amax, host.y, w, amax / 5, y_hat, w],
+                                          bounds=([0, host.y - 3, 0.8, 0, y_hat - 4, 0.8],
+                                                  [3 * amax, host.y + 3, 4 * w, amax, y_hat + 4, 4 * w]),
+                                          maxfev=5000)
+                except (RuntimeError, ValueError):
+                    continue
+                rss1 = float(((cc - g1(yy, *q1)) ** 2).sum())
+                rss2 = float(((cc - g2(yy, *q2)) ** 2).sum())
+                a1, m1, s1, a2, m2, s2 = q2
+                share = a2 * s2 / max(a1 * s1 + a2 * s2, 1e-12)
+                if not (rss2 < LADDER_SPLIT_RSS * rss1 and share >= LADDER_SPLIT_MIN_SHARE and abs(m2 - m1) >= 3):
+                    continue
+                if p.marker_masses:                  # the split must roughly agree with the datasheet
+                    hj = a if host is ba else c
+                    expect = p.marker_masses[j] / max(p.marker_masses[j] + p.marker_masses[hj], 1e-9)
+                    if not LADDER_SPLIT_SHARE_TOL ** -1 <= share / max(expect, 1e-9) <= LADDER_SPLIT_SHARE_TOL:
+                        continue
+                yf = np.linspace(m1, m2, 200)
+                cut = float(np.floor(yf[np.argmin(np.abs(g1(yf, a1, m1, s1) - g1(yf, a2, m2, s2)))]))
+                if m2 > m1:
+                    parts = [Band(i, host.y, lo, cut, host.source), Band(i, float(m2), cut + 1, float(hi), "ladder")]
+                else:
+                    parts = [Band(i, float(m2), float(lo), cut, "ladder"), Band(i, host.y, cut + 1, hi, host.source)]
+                if min(b.y1 - b.y0 for b in parts) < 2:
+                    continue
+                self.bands.remove(host)
+                self.bands += parts
+                done.append(f"lane {L}: {p.marker_sizes[j]:g} found inside the band at row {host.y:.0f} "
+                            f"(now row {m2:.0f}, {share:.0%} of the pair)")
+        if done:
+            self.bands.sort(key=lambda b: (b.lane, b.y))
+            self._log("refine_marker_bands", {"marker_lanes": p.marker_lanes, "preset": p.marker_preset},
+                      "; ".join(done))
+        return done
+
     def calibrate(self) -> list[MarkerCalibration]:
         p = self.params
         self.calibrations, self.mass_fit = [], None
         if not p.marker_sizes or not p.marker_lanes:
             return []
+        self.refine_marker_bands()
         vols = self._volumes()
         for L in p.marker_lanes:
             i = L - 1
@@ -1232,7 +1347,9 @@ class GelAnalysis:
                 continue
             for y, m, v, sz in zip(c.ys, c.masses, c.volumes, c.sizes):
                 b = next(bb for bb in self.bands if bb.lane == c.lane and bb.y == y)
-                if not sat[self.bands.index(b)] and m > 0 and v > 0:
+                # a band split off by the ladder-guided fit sizes fine, but its volume is a model
+                # estimate (faint shoulder of a bright band): not used as an ng standard
+                if b.source != "ladder" and not sat[self.bands.index(b)] and m > 0 and v > 0:
                     xs.append(m * k)
                     ys.append(v)
                     ss.append(sz)
@@ -1330,12 +1447,12 @@ class GelAnalysis:
             b = self.bands[k]
             prev = self.bands[cur[-1]] if cur else None
             touching = prev is not None and prev.lane == b.lane and b.y0 <= prev.y1 + 1.5
-            if touching and b.source == "auto" and prev.source == "auto":
+            if touching and b.source in AUTO_SOURCES and prev.source in AUTO_SOURCES:
                 cur.append(k)
             else:
                 if len(cur) > 1:
                     groups.append(cur)
-                cur = [k] if b.source == "auto" else []
+                cur = [k] if b.source in AUTO_SOURCES else []
         if len(cur) > 1:
             groups.append(cur)
         return groups
@@ -1532,7 +1649,7 @@ class GelAnalysis:
     def to_dict(self) -> dict:
         return {"autogel_version": __version__, "image": self.path,
                 "orientation": self.gel.orientation, "params": asdict(self.params),
-                "well_y": self.well_y,
+                "well_y": self.well_y, "ladder_refined": sorted(self._ladder_refined),
                 "lanes": [asdict(l) for l in self.lanes],
                 "bands": [asdict(b) for b in self.bands], "log": self.log}
 
@@ -1557,6 +1674,8 @@ class GelAnalysis:
         ga.well_y = d.get("well_y", 0.0)
         ga.lanes = [Lane(**l) for l in d["lanes"]]          # older sessions: no "bend" -> straight
         ga.bands = [Band(**b) for b in d["bands"]]
+        # sessions before 0.5: treat marker lanes as refined (the user has seen and edited them)
+        ga._ladder_refined = set(d.get("ladder_refined", [L - 1 for L in params.marker_lanes]))
         ga._log("load_session", {"session": os.path.abspath(path)},
                 f"{len(ga.lanes)} lanes, {len(ga.bands)} bands restored")
         return ga

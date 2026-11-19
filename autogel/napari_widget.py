@@ -1021,7 +1021,7 @@ class AutogelWidget(QWidget):
         if self.ga is None:
             return
         pending, self._pending = self._pending, set()
-        lanes_changed = False
+        lanes_changed = bands_changed = False
         if "lanes" in pending:
             layer = self.viewer.layers["lanes"]
             drawn = [(_lane_shape(l), l) for l in self.ga.lanes]
@@ -1063,6 +1063,7 @@ class AutogelWidget(QWidget):
                 lanes_changed = True
             elif new is None and self.ga.params.crop:
                 self.ga.set_crop(None, reason="region deleted in viewer")
+                lanes_changed = True
         if "tiers" in pending and "gel splits" in self.viewer.layers:
             rows, cols = [], []
             for ln in self.viewer.layers["gel splits"].data:
@@ -1100,9 +1101,15 @@ class AutogelWidget(QWidget):
                 i = hit[0]
                 prev = old.get((i, round(y0), round(y1)))
                 bands.append(prev if prev else self.ga.band_for(i, y0, y1, source="user"))
-            self.ga.set_bands(bands, reason="edited in viewer")
+            # napari also emits data events when the layer is redrawn or selected: only a real
+            # change counts, otherwise redraw -> event -> "edit" -> quantify -> redraw ... loops
+            if len(bands) != len(self.ga.bands) or any(b not in old.values() for b in bands):
+                self.ga.set_bands(bands, reason="edited in viewer")
+                bands_changed = True
             if orphan:
                 self._info(f"{orphan} band rectangle(s) outside any lane were ignored")
+        if not (lanes_changed or bands_changed):      # redraw events only: nothing to do
+            return
         self._refresh_layers()
         self.quantify(silent=True)
 
@@ -1163,8 +1170,8 @@ class AutogelWidget(QWidget):
             bands.data = []
             if ga.bands:
                 from matplotlib.colors import to_rgba
-                edge = [col["band"] if b.source == "auto" else AI_BAND if b.source == "ai" else col["user_band"]
-                        for b in ga.bands]
+                edge = [col["band"] if b.source in ("auto", "ladder") else AI_BAND if b.source == "ai"
+                        else col["user_band"] for b in ga.bands]
                 # doubtful bands in grey: low band-checker probability or not confirmed by the AI
                 df = self.df
                 if df is not None and len(df) == len(ga.bands):

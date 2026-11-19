@@ -85,7 +85,10 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
                 continue
             c_ = cals[i]
             ys = c_.ys
-            err = hidden_linreg(c_.volumes, c_.masses, rng=rng)
+            # as the app's ng curve: bands split off by the ladder-guided fit are not standards
+            src = {b.y: b.source for b in ga.bands if b.lane == i}
+            std = [(v, m) for y, v, m in zip(c_.ys, c_.volumes, c_.masses) if src.get(y) != "ladder"]
+            err = hidden_linreg([v for v, _ in std], [m for _, m in std], rng=rng)
             # measurement only: which band is which taken from the hand outlines (as the paper's
             # tools started from identified bands); lanes whose outlines hold all ladder bands
             lane = ga.lanes[i]

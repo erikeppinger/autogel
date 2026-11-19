@@ -70,6 +70,7 @@ replayable log.
 | D26 | Learned models only with a fair split (GelGenie train/val vs. test + external labs), as information first, deletions opt-in, never in marker lanes | A model evaluated on its training data looks better than it is; faint ladder bands must never be removed silently |
 | D27 | AI second opinion via ONNX + onnxruntime, optional extra, model downloaded on request | PyTorch (~200 MB) would break the "old laptop" goal; nothing leaves the computer |
 | D28 | Touching-band peak fit only when R² ≥ 0.97 (was 0.9); background unchanged | On the GelGenie ladder gels the default rolling ball beat every other radius/method; mediocre Gaussian fits of real (tailed) bands cost NEB 1.25 points, Thermo neutral |
+| D30 | Ladder-guided split of a marker band where the ladder expects a second band inside it (two-Gaussian fit near the expected row); split part = source `ladder`, used for sizes, not as ng standard | NEB 900 bp on the bright 1000 bp band's shoulder: found 34 -> 40 of 44 lanes; its volume is a model estimate, so as an ng standard it cost +2.3 points |
 | D29 | Marker bands paired with the ladder by local alignment (spacing and brightness per ng change smoothly step to step), classic search kept where clearly smoother; no ladder-guided band splitting/adding | Real ladder lanes: wells, dye front, merged pairs and misses occur together; a global curve bends around them. Splitting/adding bands gave no net gain |
 
 ## 4. Test material
@@ -302,6 +303,48 @@ without a GPU, not made for gels).
   code).
 - **Evaluation now as a user:** `eval_quantitation.py` marks every lane as a ladder lane with
   the known ladder and uses `calibrate()`, instead of calling the pairing directly.
+
+**900 bp NEB band (user request: improve its detection, D30)**
+- **Diagnosis** (44 NEB lanes with complete hand outlines): 900 bp found in 34; in the other 10
+  it sits on the shoulder of the bright 1000 bp band (122 vs 34 ng). Its own prominence is
+  18–360 against a detection threshold of 95–394, so peak finding cannot separate it, and the
+  1000 bp band's range then includes it (inflating 1000 bp too).
+- **Ladder-guided split** (`refine_marker_bands`, once per marker lane after detection, before
+  calibration): the alignment (D29) gives the expected row of a missing size between two paired
+  neighbours (interpolated in log size). If it lies inside or on the flank of a neighbour's band,
+  two Gaussians are fitted there (one at the band's peak +-3 px, one at the expected row +-4 px).
+  Split where the components are equal if: residual < 50 % of one Gaussian's; hidden part
+  >= 3 % of the area; with masses, its share within 2x of the datasheet's.
+  - Position: within ~1 px of the outline on the real gels, 2–4 px on a simulated shoulder.
+  - Amount: 900/1000 volume ratio of split lanes ~0.1–0.4; clean lanes 0.33 (mass ratio 0.28).
+- **First version** (share gate 2.5x, split part used as ng standard): 19 NEB lanes changed,
+  10 worse / 3 better, +2.3 points (p = 0.03); 29_NEB gave the 900 bp part 34–54 % of the pair.
+- **Final:** gate 2x; the split part (source `ladder`) is used for the size curve but **not as
+  an ng standard** - its volume is a model estimate. The 1000 bp band no longer carries the
+  900 bp signal.
+
+| | 900 bp found | sizes correctly found (NEB) | NEB median | NEB same lanes | Thermo median |
+|---|---|---|---|---|---|
+| before | 34/44 | 0.946 | 22.7 % | 15.1 % (31 lanes) | 27.6 % |
+| D30 | **40/44** | **0.961** | 22.8 % | **14.3 %** (34 lanes) | 27.4 % |
+
+  Lanes with a split: 16 NEB (3 better, 6 worse, +0.6 points, n.s.), 3 Thermo (n.s.).
+- **Still missed:** 13_NEB L4, 15_NEB L2/L4 (1000, 900 and 800 bp all in one band: two sizes
+  missing, not handled) and 18_NEB L3 (share gate).
+- **Safety:** runs once per lane and detection; a split band the user deletes stays deleted,
+  also after saving/loading a session (`ladder_refined` in the session). Sessions from before
+  count their marker lanes as refined. Option `ladder_guided` (default on).
+- **Tests:** synthetic shoulder (found only with the guided split, within 5 px); user deletion
+  and session round-trip.
+
+**GUI lag (user report on two lab gels, 2026-11-19)**
+- The log filled with "Bands edited (edited in viewer): 0 added/changed ..." + "Quantified" about
+  twice a second. Cause: napari emits data events on the lanes, bands, region and split layers
+  also when they are redrawn; each was treated as an edit, which re-quantified and redrew again.
+- Fix: an edit counts only if the layer really differs from the analysis (bands compared by
+  lane and integration range, as lanes already were); redraw + quantify only after a real change.
+  Checked on the lab gel: 0 log entries in 4 s idle (before: ~2 per second); deleting a band in
+  the viewer still applies once. The analysis itself takes ~0.03 s per quantify.
 
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness

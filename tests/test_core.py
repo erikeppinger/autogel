@@ -170,6 +170,57 @@ def test_marker_merged_pair_plus_well_band():
     assert got.get(ys[k]) in (1000, 900, None)
 
 
+def _shoulder_gel(tmp_path, sig=9):
+    """NEB ladder whose 1000 and 900 bp bands are wide, so 900 is only a shoulder of 1000."""
+    from autogel.markers import PRESETS
+    e = PRESETS["NEB Quick-Load Purple 1 kb Plus (N0550)"]
+    bands, ymap = ladder(sizes=tuple(e["sizes"]), amp=1, sig=4)
+    w = [sig if s in (1000, 900) else 4 for s in e["sizes"]]
+    lanes = [(y, 480 * m / s_, s_) for (y, _, _), m, s_ in zip(bands, e["masses"], w)]
+    return make_gel(str(tmp_path / "shoulder.tif"), n_lanes=3, lanes={0: lanes, 1: lanes, 2: lanes}), ymap
+
+
+def test_ladder_guided_split_finds_shoulder_band(tmp_path):
+    path, ymap = _shoulder_gel(tmp_path)
+    neb = "NEB Quick-Load Purple 1 kb Plus (N0550)"
+    found = {}
+    for guided in (False, True):
+        ga = GelAnalysis(path, Params(n_lanes=3, ladder_guided=guided))
+        ga.detect_lanes()
+        ga.detect_bands()
+        ga.set_marker([1, 2], preset=neb)
+        ga.quantify()
+        c = ga.calibrations[0]
+        found[guided] = dict(zip(c.sizes, c.ys))
+    assert 900 not in found[False]                          # without guidance: a shoulder only
+    assert found[True][900] == pytest.approx(ymap[900], abs=5)
+    # the split part is marked and not used as an ng standard
+    split = [b for b in ga.bands if b.source == "ladder"]
+    assert split and all(abs(b.y - ymap[900]) < 6 for b in split)
+    assert any(e["step"] == "refine_marker_bands" for e in ga.log)
+
+
+def test_ladder_split_respects_user_deletion_and_sessions(tmp_path):
+    path, _ = _shoulder_gel(tmp_path)
+    ga = GelAnalysis(path, Params(n_lanes=3))
+    ga.detect_lanes()
+    ga.detect_bands()
+    ga.set_marker([1], preset="NEB Quick-Load Purple 1 kb Plus (N0550)")
+    ga.quantify()
+    assert any(b.source == "ladder" for b in ga.bands)
+    ga.set_bands([b for b in ga.bands if b.source != "ladder"], reason="user deleted the split band")
+    ga.quantify()                                           # must not come back
+    assert not any(b.source == "ladder" for b in ga.bands)
+    sp = str(tmp_path / "s.json")
+    ga.save_session(sp)
+    ga2 = GelAnalysis.load_session(sp)
+    ga2.quantify()
+    assert not any(b.source == "ladder" for b in ga2.bands)
+    ga2.detect_bands(lanes=[0])                             # a new detection refines again
+    ga2.quantify()
+    assert any(b.source == "ladder" for b in ga2.bands)
+
+
 def test_marker_with_dust_band_is_matched(gel):
     ga = run(gel, n_lanes=10)
     ga.set_marker([1], sizes=SIZES)
