@@ -3,8 +3,9 @@
     python tools/eval_quantitation.py DATA_DIR SOURCE_DATA_DIR [OUT_DIR] [--set name=value ...]
 
 Data: GelGenie quantitation_ladder_gels (Zenodo 14641949): every lane holds a commercial ladder
-with known band masses. NEB lanes (Quick-Load Purple 1 kb Plus, N0550) use autogel's verified
-masses. Protocol exactly as Aquilina et al., Nat Commun 2025 (GelGenie), Fig. 1c / S2 / S4:
+with known band masses: NEB Quick-Load Purple 1 kb Plus (N0550) or Invitrogen 1 Kb Plus
+(10787018), both from autogel's ladder library.
+Protocol exactly as Aquilina et al., Nat Commun 2025 (GelGenie), Fig. 1c / S2 / S4:
 per lane, fit mass = a * volume + b on all bands but 5 hidden ones, predict the hidden masses,
 error = |true - predicted| / true * 100, averaged over 80 random hidden sets (seed 12); lane 2 of
 gels 14/16/17_NEB excluded. The published per-lane errors of manual segmentation, GelAnalyzer
@@ -26,11 +27,16 @@ from scipy.stats import linregress  # noqa: E402
 
 from autogel.markers import PRESETS, assign_marker  # noqa: E402
 
-NEB = PRESETS["NEB Quick-Load Purple 1 kb Plus (N0550)"]
+LADDERS = {  # name in the gel file -> (ladder, name in the paper's source data)
+    "NEB": (PRESETS["NEB Quick-Load Purple 1 kb Plus (N0550)"], "NEB"),
+    "Thermo": (PRESETS["Invitrogen 1 Kb Plus (10787018, 100-15,000 bp)"], "ThermoFisher"),
+}
 EXCLUDE = {("14_NEB", 2), ("16_NEB", 2), ("17_NEB", 2)}
-# the 15 NEB gels the paper evaluated (GelGenie notebook, gel_based_order)
+# the 30 gels the paper evaluated (GelGenie notebook, gel_based_order; source data of Fig. S2)
 PAPER_GELS = {"13_NEB", "15_NEB", "14_NEB", "16_NEB", "17_NEB", "18_NEB", "19_NEB", "20_NEB", "22_NEB",
-              "23_NEB", "24_NEB", "21_NEB", "29_NEB", "31_NEB", "33_NEB"}
+              "23_NEB", "24_NEB", "21_NEB", "29_NEB", "31_NEB", "33_NEB",
+              "0_Thermo", "1_Thermo", "2_Thermo", "3_Thermo", "4_Thermo", "5_Thermo", "6_Thermo", "7_Thermo",
+              "8_Thermo", "9_Thermo", "10_Thermo", "11_Thermo", "12_Thermo", "32_Thermo", "34_Thermo"}
 
 
 def hidden_linreg(volume, mass, num_hide=5, num_reps=80, rng=None):
@@ -60,6 +66,7 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
         gel = os.path.splitext(os.path.basename(img))[0]
         if gel not in PAPER_GELS:
             continue
+        lad = LADDERS[gel.split("_", 1)[1]][0]
         r = bg.evaluate(img, mp)                       # same lane count as the benchmark (from the masks)
         ga = r["_ga"]
         for k, v in extra.items():
@@ -74,7 +81,7 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
             bl = [(b.y, v) for b, v in zip(ga.bands, vols) if b.lane == i]
             if len(bl) < 8:
                 continue
-            ys, sizes, masses, warn = assign_marker([y for y, _ in bl], NEB["sizes"], NEB["masses"],
+            ys, sizes, masses, warn = assign_marker([y for y, _ in bl], lad["sizes"], lad["masses"],
                                                     volumes=[v for _, v in bl])
             vmap = dict(bl)
             vol = [vmap[y] for y in ys]
@@ -85,7 +92,7 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
             comps = sorted([c for c in bg.components(r["_mask"]) if lane.contains(c.centroid[1], c.centroid[0])],
                            key=lambda c: c.centroid[0])
             err_known = np.nan
-            if len(comps) == len(NEB["sizes"]):
+            if len(comps) == len(lad["sizes"]):
                 vk = []
                 for c in comps:
                     yc = c.centroid[0]
@@ -96,9 +103,36 @@ def autogel_lanes(data: str, extra: dict) -> pd.DataFrame:
                 owners = [next((k for k, b in lane_bands if b.y0 - 2 <= c.centroid[0] <= b.y1 + 2), -1)
                           for c in comps]
                 if np.isfinite(vk).all() and len(set(owners)) == len(owners):
-                    err_known = hidden_linreg(vk, NEB["masses"], rng=rng)
-            rows.append({"Gel": gel, "lane": li, "bands": len(ys), "autogel": err, "autogel_known_bands": err_known})
+                    err_known = hidden_linreg(vk, lad["masses"], rng=rng)
+            rows.append({"Gel": gel, "ladder": gel.split("_", 1)[1], "lane": li, "bands": len(ys),
+                         "autogel": err, "autogel_known_bands": err_known})
     return pd.DataFrame(rows)
+
+
+def same_lanes(mine, src, paper_name, seg, ims):
+    """Fair comparison: every method on the lanes where autogel's 'identified bands' value exists.
+
+    The paper's per-gel sheets list lanes in gel order, so row k of a gel is taken as lane k. That
+    is only safe when every gel has all its lanes in the sheet (no excluded lanes), so gels with
+    a different row count are skipped.
+    """
+    ga = pd.read_excel(os.path.join(src, f"figure_s2_{paper_name}_gelanalyzer_source_data.xlsx"))
+    sheets = [seg, ga, ims]
+    full = set.intersection(*[set(c[c == c.max()].index) for c in (d["Gel"].value_counts() for d in sheets)])
+    m = mine.dropna(subset=["autogel_known_bands"])
+    m = m[m["Gel"].isin(full)]
+    for d in sheets:
+        d = d.assign(lane=d.groupby("Gel").cumcount() + 1)
+        m = m.merge(d, on=["Gel", "lane"], suffixes=("", "_dup"))
+    if m.empty:
+        return
+    cols = ["autogel_known_bands", "Manual Segmentation", "Manual + Rolling Ball Background Correction",
+            "GelAnalyzer (Raw)", "GelAnalyzer (Background Correction)", "Image Studio (Raw)",
+            "Image Studio (Lane Background Corr.)", "Image Studio (Median Local Background Corr.)"]
+    print(f"  same {len(m)} lanes (where autogel matched every band to a hand outline), median %:")
+    for c in cols:
+        if c in m:
+            print(f"    {c:48s} {m[c].median():5.1f}")
 
 
 def main(argv):
@@ -111,28 +145,35 @@ def main(argv):
     data, src = argv[0], argv[1]
     out = argv[2] if len(argv) > 2 else None
     ours = autogel_lanes(data, extra)
-    pub = pd.read_excel(os.path.join(src, "figure_1c_source_data.xlsx"))
-    pub = pub[pub["Ladder"] == "NEB"]
-    ims = pd.read_excel(os.path.join(src, "figure_s4_NEB_Image Studio_source_data.xlsx"))
-    seg = pd.read_excel(os.path.join(src, "figure_s2_NEB_segmentation_source_data.xlsx"))
-    table = {
-        "autogel, end to end (detection + assignment)": ours["autogel"].dropna(),
-        "autogel, bands identified as in the paper": ours["autogel_known_bands"].dropna(),
-        "Manual segmentation (paper)": pub["Segmentation"],
-        "Manual seg. + rolling ball (paper)": seg["Manual + Rolling Ball Background Correction"],
-        "GelAnalyzer, raw (paper)": pub["GelAnalyzer (Raw)"],
-        "GelAnalyzer, background corr. (paper)": pub["GelAnalyzer (Background Corr.)"],
-        "Image Studio, raw (paper)": ims["Image Studio (Raw)"],
-        "Image Studio, lane background (paper)": ims["Image Studio (Lane Background Corr.)"],
-        "Image Studio, median local bg. (paper)": ims["Image Studio (Median Local Background Corr.)"],
-    }
-    print(f"NEB 1 kb Plus lanes: autogel evaluated {len(ours)} lanes "
-          f"(paper: {len(pub)} lanes); extra settings {extra or 'none'}")
-    print(f"{'method':42s} {'lanes':>5s} {'median %':>9s} {'mean %':>7s} {'IQR':>13s}")
-    for name, s in table.items():
-        s = pd.Series(s).dropna()
-        q1, q3 = np.percentile(s, [25, 75])
-        print(f"{name:42s} {len(s):5d} {s.median():9.1f} {s.mean():7.1f}   {q1:5.1f}-{q3:5.1f}")
+    print(f"extra settings {extra or 'none'}")
+    for key, (_, paper_name) in LADDERS.items():
+        mine = ours[ours["ladder"] == key]
+        pub = pd.read_excel(os.path.join(src, "figure_1c_source_data.xlsx"))
+        pub = pub[pub["Ladder"] == paper_name]
+        ims = pd.read_excel(os.path.join(src, f"figure_s4_{paper_name}_Image Studio_source_data.xlsx"))
+        seg = pd.read_excel(os.path.join(src, f"figure_s2_{paper_name}_segmentation_source_data.xlsx"))
+        table = {
+            "autogel, end to end (detection + assignment)": mine["autogel"].dropna(),
+            "autogel, bands identified as in the paper": mine["autogel_known_bands"].dropna(),
+            "Manual segmentation (paper)": pub["Segmentation"],
+            "Manual seg. + rolling ball (paper)": seg["Manual + Rolling Ball Background Correction"],
+            "GelAnalyzer, raw (paper)": pub["GelAnalyzer (Raw)"],
+            "GelAnalyzer, background corr. (paper)": pub["GelAnalyzer (Background Corr.)"],
+            "Image Studio, raw (paper)": ims["Image Studio (Raw)"],
+            "Image Studio, lane background (paper)": ims["Image Studio (Lane Background Corr.)"],
+            "Image Studio, median local bg. (paper)": ims["Image Studio (Median Local Background Corr.)"],
+        }
+        print()
+        print(f"{paper_name} lanes: autogel evaluated {len(mine)} lanes (paper: {len(pub)} lanes)")
+        print(f"{'method':42s} {'lanes':>5s} {'median %':>9s} {'mean %':>7s} {'IQR':>13s}")
+        for name, ser in table.items():
+            ser = pd.Series(ser).dropna()
+            if ser.empty:
+                print(f"{name:42s}     0")
+                continue
+            q1, q3 = np.percentile(ser, [25, 75])
+            print(f"{name:42s} {len(ser):5d} {ser.median():9.1f} {ser.mean():7.1f}   {q1:5.1f}-{q3:5.1f}")
+        same_lanes(mine, src, paper_name, seg, ims)
     if out:
         os.makedirs(out, exist_ok=True)
         ours.to_csv(os.path.join(out, "autogel_lanes.csv"), index=False)

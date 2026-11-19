@@ -182,25 +182,47 @@ without a GPU, not made for gels).
   - lane 2 of gels 14/16/17 excluded; only their 15 NEB gels
 - **Our first run** also included gels 25–28 and 30, which the paper didn't evaluate, and 145
   lanes instead of their 102. That gave a median of 48 %; with their gel list it is 100 lanes.
-- **NEB Quick-Load Purple 1 kb Plus (N0550)** lanes, median (middle half) of the per-lane error:
+- **Ladders:** NEB Quick-Load Purple 1 kb Plus (N0550) and Invitrogen 1 Kb Plus (10787018,
+  current 100–15,000 bp version, now in the library). The 10787018 per-band masses are not in
+  the PDF sheet MAN0000898 (it gives sizes and the 500 ng load); they are shown as an image on
+  the product page (20 ng 15,000–2,000 bp, 70 ng at 1,500, 30 ng 1,000–200, 40 ng at 100; per
+  0.5 µg) and are the same values the GelGenie code uses.
+- **Result**, median (middle half) of the per-lane error; both ladders in one run, so the NEB
+  values differ slightly from the first NEB-only run (16.1 / 26.7 %) because the random hidden
+  sets are drawn in a different order:
 
-| Method | Lanes | Median | IQR |
-|---|---|---|---|
-| autogel, bands identified via the hand outlines (measurement only) | 33 | **16.1 %** | 13–24 % |
-| Manual segmentation (paper) | 102 | 17.8 % | 14–22 % |
-| GelAnalyzer, background corrected (paper) | 102 | 17.5 % | 14–24 % |
-| autogel, fully automatic (detection + ladder assignment) | 100 | 26.7 % | 20–49 % |
-| GelAnalyzer, raw (paper) | 102 | 26.1 % | 17–36 % |
-| Image Studio, 3 background variants (paper) | 102 | 24–32 % | 20–42 % |
+| Method | NEB lanes | NEB median | Thermo lanes | Thermo median |
+|---|---|---|---|---|
+| autogel, fully automatic (detection + ladder assignment) | 100 | 26.4 % | 180 | 27.5 % |
+| autogel, bands identified via the hand outlines | 33 | 17.3 % | 68 | 10.1 % |
+| Manual segmentation (paper) | 102 | 17.8 % | 180 | 24.8 % |
+| GelAnalyzer, background corrected (paper) | 102 | 17.5 % | 180 | 27.2 % |
+| GelAnalyzer, raw (paper) | 102 | 26.1 % | 180 | 27.1 % |
+| Image Studio, 3 background variants (paper) | 102 | 24–32 % | 180 | 26–27 % |
+
+- **Same lanes (fair comparison):** the "identified bands" value only exists for lanes where
+  every outlined band maps onto exactly one autogel band, i.e. the cleaner lanes. The paper's
+  per-gel sheets list lanes in gel order, so on gels with all lanes listed every method can be
+  compared on exactly those lanes (`same_lanes` in the script):
+
+| Method, median on the same lanes | NEB (31 lanes) | Thermo (68 lanes) |
+|---|---|---|
+| autogel, identified bands | 17.3 % | 10.1 % |
+| Manual segmentation | 17.0 % | 13.2 % |
+| Manual + rolling ball | 16.6 % | 14.9 % |
+| GelAnalyzer, raw | 16.9 % | 11.5 % |
+| GelAnalyzer, background corrected | **14.7 %** | **9.5 %** |
+| Image Studio, 3 variants | 22–28 % | 12–15 % |
 
 - **Reading:**
-  - autogel's band measurement is as good as the best published methods. Caveat: only the 33
-    lanes where every outlined band maps uniquely onto one autogel band, probably the cleaner
-    ones; the paper's values can't be matched lane by lane.
-  - Fully automatic, autogel equals raw GelAnalyzer and Image Studio but trails the manually
-    guided methods. Missed or merged ladder bands shift the size assignment.
-- **Not done yet:** the Thermo 1 Kb Plus lanes (180 in the paper). The per-band masses of
-  10787018 are only in the vendor manual (PDF), not on the product page, so not verified yet.
+  - On the same lanes, autogel's band measurement is level with manual segmentation and raw
+    GelAnalyzer, better than Image Studio, and slightly behind GelAnalyzer with background
+    correction. The large gap in the first table (10 vs 25 % on Thermo) is mostly lane
+    selection, not a better method.
+  - Fully automatic, autogel is level with all published tools on the Thermo gels and with raw
+    GelAnalyzer / Image Studio on the NEB gels, where it trails the manually guided methods.
+    Missed or merged ladder bands shift the size assignment.
+  - Next lever: GelAnalyzer's background correction. Worth testing as an option.
 
 ### 0.5.0.dev1 – 2026-11-19 – branch `develop`: real-world test data, crop, robustness
 User requests: test the new features on real data; use APIs instead of manual downloads; don't

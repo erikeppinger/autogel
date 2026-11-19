@@ -554,11 +554,12 @@ Options of `run`:
 **Compared with other tools on true DNA amounts:**
 - **Data:** the GelGenie paper's ladder gels, where every band's amount is known, with the
   paper's own protocol and published results.
-- **NEB 1 kb Plus lanes, median error of the predicted DNA amount per lane:**
-  - autogel measuring bands identified as in the paper: 16 %
-  - manual segmentation: 18 %
-  - GelAnalyzer with background correction: 18 %
-  - autogel fully automatic: 27 %, like raw GelAnalyzer (26 %) and Image Studio (24–32 %)
+- **Median error of the predicted DNA amount per lane** (NEB 1 kb Plus / Invitrogen 1 Kb Plus):
+  - autogel fully automatic: 26 % / 28 %, like raw GelAnalyzer (26 % / 27 %) and Image Studio
+    (24–32 % / 26–27 %)
+  - on the lanes where all ladder bands were found, compared on exactly the same lanes:
+    autogel 17 % / 10 %, manual segmentation 17 % / 13 %, GelAnalyzer with background
+    correction 15 % / 10 %, Image Studio 22–28 % / 12–15 %
 - **Practical consequence:** check the ladder bands. When all ladder bands are found, autogel's
   numbers are as good as careful manual work.
 
