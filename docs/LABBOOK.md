@@ -392,6 +392,21 @@ without a GPU, not made for gels).
   8 lanes at the right places and widths, narrow ladder lane, wells not the rim; fails on the
   old code. `lane_method="comb"` still gives the regular comb.
 
+**Help inside the app (user request: manual / guide reachable from the app, no jargon)**
+- **Help ▾** next to Easy/Expert: *Quick tour*, *User guide* (F1), *Full manual (online)*,
+  *Report a problem or idea*. The status line on start says "New here? Help ▸ Quick tour".
+- **User guide** = new plain-language text `autogel/help/guide.md`, shipped in the package
+  (offline): what to click and why, organised by step; troubleshooting as "what you see / what
+  to do". The technical manual stays the detailed reference (online link). A test fails if
+  technical terms (e.g. deconvolution, rolling ball, threshold, pixel, CSV) appear in the guide
+  or the tour.
+- **Quick tour**: 9 steps; each scrolls to the part of the panel it explains and frames it in
+  orange (removed again on close).
+- **Found while checking in the GUI:** the panel content needs ~480 px but asked for 380, so
+  the dock opened too narrow and cut off the right side (Log, second buttons) behind a sideways
+  scrollbar. The panel now asks for the width of its content (495 px); drop-downs with long
+  ladder names no longer widen it.
+
 **Protein ladders from the user's datasheets (2026-11-20)**
 - PageRuler Plus Prestained (26619), MAN0011773: the existing Tris-glycine entry (250-10 kDa)
   confirmed; reference bands (orange 70 / 25, green 10 kDa) added. The sheet's migration table

@@ -49,7 +49,9 @@ autogel batch gels/ --template gel_session.json --out results/   # many gels
 ```
 
 Documentation:
-- [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — how to use it
+- In the app: **Help ▾** (next to Easy/Expert) → *Quick tour* and *User guide* (F1, works
+  offline, plain language; source: [autogel/help/guide.md](autogel/help/guide.md))
+- [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — how to use it, every setting in detail
 - [docs/LABBOOK.md](docs/LABBOOK.md) — idea, design decisions, change log
 
 Tests: `pip install -e .[dev] && pytest`

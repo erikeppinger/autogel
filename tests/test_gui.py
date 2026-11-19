@@ -650,3 +650,47 @@ def test_ai_button_and_checker_spin(ui, monkeypatch):
     w.sp_checker.setValue(0.3)
     w.detect_bands()
     assert w.ga.params.checker_filter == pytest.approx(0.3)
+
+
+def test_help_menu_guide_and_tour(ui, monkeypatch):
+    w, v, msgs, _ = ui
+    from autogel import help_dialog
+    opened = []
+    monkeypatch.setattr(help_dialog.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()) or True)
+    acts = {a.text(): a for a in w.btn_help.menu().actions() if a.text()}
+    assert {"Quick tour", "User guide  (F1)", "Full manual (online)", "Report a problem or idea (online)"} <= set(acts)
+    acts["Full manual (online)"].trigger()
+    acts["Report a problem or idea (online)"].trigger()
+    assert any("USER_MANUAL" in u for u in opened) and any("issues" in u for u in opened)
+    # guide: offline, sections, search
+    w.show_guide()
+    g = w._guide
+    assert g.isVisible() and g.toc.count() >= 8
+    g.search.setText("saturated")
+    assert 0 < g.toc.count() < len(g.sections)
+    g.search.setText("no such word xyz")
+    assert g.toc.count() == 0
+    g.search.clear()
+    w.show_guide("Step 4: Marker (ladder)")
+    assert g.toc.currentItem().text() == "Step 4: Marker (ladder)"
+    # tour: every step points at an existing part of the panel; the frame is removed again
+    w.show_tour()
+    t = w._tour
+    css = {n: getattr(w, n).styleSheet() for _, _, n in help_dialog.TOUR if n}
+    for k, (_, _, target) in enumerate(help_dialog.TOUR):
+        t.go(k)
+        if target:
+            assert getattr(w, target) is t._framed and "E69F00" in getattr(w, target).styleSheet()
+    t.close()
+    assert all(getattr(w, n).styleSheet() == c for n, c in css.items())
+
+
+def test_guide_is_plain_language():
+    # user request: no technical jargon in the in-app help (the full manual keeps the details)
+    from autogel.help_dialog import GUIDE_PATH, TOUR
+    with open(GUIDE_PATH, encoding="utf-8") as f:
+        text = f.read().lower() + " ".join(t + " " + x for t, x, _ in TOUR).lower()
+    for word in ("deconvol", "rolling ball", "r²", "regression", "gaussian", "pipeline", "algorithm",
+                 "signal/noise", "snr", "threshold", "parameter", "onnx", "pixel", "calibration curve",
+                 "dynamic programming", "csv", "json"):
+        assert word not in text, word

@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -43,6 +44,7 @@ from qtpy.QtWidgets import (
 
 from .analysis import GelAnalysis, Lane, Params
 from .export import export_all, plot_lane
+from .help_dialog import MANUAL_URL, REPORT_URL, HelpDialog, TourDialog, open_url
 from .labels import declutter, plan_labels
 from .markers import DEFAULT_PRESET, PRESETS, RESOLUTION_GUIDE, parse_sizes, suggest_ladders
 from .report import describe
@@ -258,11 +260,24 @@ class AutogelWidget(QWidget):
             btn.setCheckable(True)
             self._mode_group.addButton(btn)
             row.addWidget(btn)
+        # Help sits next to the mode buttons: the right edge of a narrow dock can be cut off
+        self.btn_help = QPushButton("Help ▾")
+        self.btn_help.setToolTip("Quick tour, user guide (F1), full manual, report a problem")
+        m = QMenu(self.btn_help)
+        m.addAction("Quick tour", self.show_tour)
+        m.addAction("User guide  (F1)", self.show_guide)
+        m.addSeparator()
+        m.addAction("Full manual (online)", lambda: open_url(MANUAL_URL))
+        m.addAction("Report a problem or idea (online)", lambda: open_url(REPORT_URL))
+        self.btn_help.setMenu(m)
+        row.addWidget(self.btn_help)
         row.addStretch()
         lay.addLayout(row)
+        from qtpy.QtGui import QKeySequence, QShortcut
+        QShortcut(QKeySequence("F1"), self, activated=self.show_guide)
         # live activity line (always visible) + full step log (toggle)
         row = QHBoxLayout()
-        self.lbl_status = QLabel("Open a gel image to start.")
+        self.lbl_status = QLabel("Open a gel image to start. New here? Help ▸ Quick tour.")
         self.lbl_status.setWordWrap(True)
         self.lbl_status.setStyleSheet("color: #56B4E9")
         row.addWidget(self.lbl_status, 1)
@@ -284,6 +299,7 @@ class AutogelWidget(QWidget):
 
         # --- file
         g = QGroupBox("1  Image")
+        self.grp_image = g
         f = QVBoxLayout(g)
         row = QHBoxLayout()
         b = QPushButton("Open image…")
@@ -343,6 +359,7 @@ class AutogelWidget(QWidget):
 
         # --- lanes
         g = QGroupBox("2  Lanes")
+        self.grp_lanes = g
         f = QFormLayout(g)
         self.sp_lanes = QSpinBox()
         self.sp_lanes.setRange(0, 200)
@@ -384,6 +401,7 @@ class AutogelWidget(QWidget):
 
         # --- bands
         g = QGroupBox("3  Bands")
+        self.grp_bands = g
         f = QFormLayout(g)
         self.cb_bg = QComboBox()
         self.cb_bg.addItems(["rolling_ball", "lane_edges", "none"])
@@ -462,6 +480,7 @@ class AutogelWidget(QWidget):
 
         # --- marker
         g = QGroupBox("4  Marker / calibration")
+        self.grp_marker = g
         f = QFormLayout(g)
         self.cb_preset = QComboBox()
         self.cb_preset.addItems(list(PRESETS) + ["custom"])
@@ -616,6 +635,7 @@ class AutogelWidget(QWidget):
 
         # --- results
         g = QGroupBox("5  Results")
+        self.grp_results = g
         f = QVBoxLayout(g)
         self.table = QTableWidget()
         self.table.setMinimumHeight(220)
@@ -640,10 +660,35 @@ class AutogelWidget(QWidget):
         sc = QScrollArea()
         sc.setWidgetResizable(True)
         sc.setWidget(inner)
+        self._scroll = sc
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(sc)
-        self.setMinimumWidth(380)
+        # long ladder names must not widen the panel (the full name shows in the open list)
+        for cb in inner.findChildren(QComboBox):
+            cb.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(12)
+            cb.view().setMinimumWidth(cb.view().sizeHintForColumn(0) + 30)
+        # wide enough for the content in both modes: otherwise the dock opens narrower and cuts
+        # off the right side (Help, Log, second buttons) behind a sideways scrollbar
+        need = inner.minimumSizeHint().width() + sc.verticalScrollBar().sizeHint().width() + 4
+        self.setMinimumWidth(max(380, need))
+
+    # ------------------------------------------------------------ help
+    def show_guide(self, section: str | None = None):
+        if getattr(self, "_guide", None) is None:
+            self._guide = HelpDialog(self)
+        if section:
+            self._guide.show_section(section)
+        self._guide.show()
+        self._guide.raise_()
+
+    def show_tour(self):
+        if getattr(self, "_tour", None) is not None:
+            self._tour.close()
+        self._tour = TourDialog(self, self)
+        self._tour.show()
+        self._tour.raise_()
 
     def shutdown(self):
         """Stop timers and detach from the analysis/viewer (closing the window or the dock)."""

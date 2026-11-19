@@ -29,7 +29,7 @@ autogel = "autogel:napari.yaml"
 include = ["autogel*"]
 
 [tool.setuptools.package-data]
-autogel = ["napari.yaml", "ladders.json", "ladders_ape.json", "models/*.json"]
+autogel = ["napari.yaml", "ladders.json", "ladders_ape.json", "models/*.json", "help/*.md"]
 
 [tool.ruff]
 line-length = 120

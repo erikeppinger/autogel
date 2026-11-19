@@ -117,6 +117,13 @@ autogel gui                     # or: autogel gui path\to\gel.tif
 
 The **autogel** panel on the right guides you from top to bottom.
 
+**Help inside the app:** **Help ▾** next to Easy/Expert opens
+- **Quick tour** – a short walk through the panel; each step frames the part it explains
+- **User guide** (also **F1**) – the essentials in plain language, with search; works offline
+- **Full manual (online)** – this manual
+- **Report a problem or idea** – the issue form on the project website (opens in your browser;
+  nothing is sent until you submit it)
+
 **Status line and log:**
 - The blue line at the top of the panel always says what autogel is doing (⏳) or has just done (✔).
 - **Log ▸** opens the complete list of steps for this gel.
