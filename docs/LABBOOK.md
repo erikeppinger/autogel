@@ -108,6 +108,27 @@ replayable log.
 
 ## 6. Change log
 
+### 0.5.0 – 2026-11-19 – release: `develop` merged into `main`
+User decision: move the work on `develop` (0.5.0.dev0 – dev2 and the steps since, below) to
+`main`. What changed for users since 0.4.1:
+- **More gel types:** Western blots (several images or colour channels of one membrane, marker
+  from a white-light image, loading-control or total-lane normalisation, fold change vs. a
+  reference lane), RNA gels (28S/18S ratio, degradation), protein ladders per gel system.
+- **Lanes:** found from the bands themselves, each with its own width (narrow ladder wells next
+  to wide sample wells); gels smaller than the picture; wells instead of the gel's top edge;
+  curved lanes and an analysed-region crop as options.
+- **Bands:** automatic noise floor, touching bands split by their peak shapes, a learned band
+  checker, an optional AI second opinion (offline, model downloaded on request).
+- **Ladders:** robust pairing of detected bands with the ladder (wells, dye front, merged and
+  missing bands), a hidden ladder band on a bright neighbour's shoulder (NEB 900 bp), ladder
+  suggestion, a shared ladder library with an in-app update, more verified ladders.
+- **Amounts:** size-dependent mass curve; compared with published tools on the GelGenie ladder
+  gels (on the same lanes level with careful manual work and GelAnalyzer).
+- **Usability:** Help menu with a quick tour and a plain-language user guide (offline), no
+  more GUI lag from redraw loops, the panel no longer cut off on the right.
+- **Installers:** optional AI extra; CI on Windows, macOS and Linux.
+Before release: full test suite, band benchmark and installer check on all three systems.
+
 ### 0.5.0.dev2 – 2026-11-19 – branch `develop`: band checker and AI second opinion
 User request: use a (AI) model for difficult bands and gels, both as a small own model and as
 an optional add-on. Rejected together with the user: cloud vision models (images would leave
