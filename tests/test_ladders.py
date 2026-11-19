@@ -53,6 +53,9 @@ def test_ape_import_agrees_with_curated_entries():
 def test_library_merges_ape_without_duplicates():
     from autogel.markers import load_library
     lib = load_library()
-    cats = [e["catalog"] for e in lib.values() if e.get("catalog")]
+    # one entry per catalog number; the same product run in other gel systems is marked
+    # "variant_of" (e.g. PageRuler Plus in Bis-Tris MOPS / MES, Tris-acetate)
+    cats = [e["catalog"] for e in lib.values() if e.get("catalog") and not e.get("variant_of")]
     assert len(cats) == len(set(cats))
+    assert all(e["variant_of"] in lib for e in lib.values() if e.get("variant_of"))
     assert len(lib) > 60
