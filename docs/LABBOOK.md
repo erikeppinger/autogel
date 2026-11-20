@@ -431,6 +431,22 @@ without a GPU, not made for gels).
   scrollbar. The panel now asks for the width of its content (495 px); drop-downs with long
   ladder names no longer widen it.
 
+**Batch tested through the real panel on the lab's gels (user question, 2026-11-20)**
+- Until then batch was only covered by an automated GUI test on synthetic gels (file pickers
+  bypassed). Driving the visible GUI on the user's screen failed (Windows kept the desktop in
+  front); the batch was then run through the real panel with the lab's gels by script.
+- **Works:** 3 gels (both 2024-09-27 gels, Test_1) in 12 s; all result files; one folder per gel;
+  progress window; Cancel stops after the running gel.
+- **Fixed:** after Cancel the message, status line and report said "Batch finished: 1 gel(s)".
+  Now "Batch cancelled after 1 of 6 gel(s)" and a note in the report; an empty table (cancel
+  before the first gel) no longer breaks the report. Tests for both.
+- **Not fixed, documented:** Test_1 (20 lanes) in a batch set up for 8 lanes was analysed with 8
+  lanes; the existing count check cannot fire with a fixed count. An independent check (does
+  another lane count explain the bands clearly better?) was measured on 87 benchmark gels:
+  false alarms 14–22 % with the true count, wrong counts caught 44–76 %. Not added; the manual
+  and the in-app guide now say to batch only gels with the same layout (or use *ask*).
+- **Not tested:** the Windows file pickers of the batch button (not scriptable).
+
 **Protein ladders from the user's datasheets (2026-11-20)**
 - PageRuler Plus Prestained (26619), MAN0011773: the existing Tris-glycine entry (250-10 kDa)
   confirmed; reference bands (orange 70 / 25, green 10 kDa) added. The sheet's migration table

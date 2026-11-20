@@ -96,7 +96,9 @@ also share it so it is included for everyone.
   - a short report of everything that was done, so you can repeat it later
 - **Save session…** keeps your work including all corrections, so you can open it again with
   **Open session…**.
-- **Batch** analyses more pictures with the same settings.
+- **Batch** analyses more pictures with the same settings. Every picture gets the same number
+  of lanes and the same marker lanes, so put only gels with the same layout in one batch.
+  **Cancel** stops after the gel that is running; the gels done so far are kept.
 
 # Western blots and RNA gels
 

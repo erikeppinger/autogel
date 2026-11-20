@@ -694,3 +694,19 @@ def test_auto_crop_finds_the_gel_and_ignores_the_frame(tmp_path):
     # a crop set by hand wins and is logged
     ga.set_crop([y0, y1, x0 + 80, x1])
     assert ga.region()[2] == x0 + 80 and ga.log[-1]["step"] == "set_crop"
+
+
+# ------------------------------------------------------------------ batch
+@pytest.mark.parametrize("stop_at", [0, 1])
+def test_batch_cancel_is_reported(tmp_path, stop_at):
+    # GUI test on the lab gels: after Cancel the message said "Batch finished", as if all were done
+    from autogel.batch import run_batch
+    imgs = [make_gel(str(tmp_path / f"g{i}.tif"), lanes=standard_lanes(), seed=i) for i in range(3)]
+    out = tmp_path / "out"
+    s = run_batch(imgs, Params(n_lanes=10), str(out), progress=lambda i, n, name: i < stop_at)
+    assert len(s) == stop_at and s.attrs == {"n_images": 3, "cancelled": True}
+    report = (out / "batch_report.md").read_text(encoding="utf-8")
+    assert f"**Cancelled** after {stop_at} of 3 gel(s)" in report
+    full = run_batch(imgs[:1], Params(n_lanes=10), str(tmp_path / "full"))
+    assert full.attrs["cancelled"] is False
+    assert "Cancelled" not in (tmp_path / "full" / "batch_report.md").read_text(encoding="utf-8")

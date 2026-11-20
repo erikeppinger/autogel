@@ -461,6 +461,22 @@ def test_batch_button(ui, tmp_path):
     s = bands[(bands.gel == "b0.tif") & (bands.lane == 5)]["size_bp"].iloc[0]
     assert s == pytest.approx(2500, rel=0.03)
     assert any("Batch finished" in m[1] for m in msgs)
+    # Cancel in the progress window (as pressed by hand in the GUI test on the lab gels)
+    from qtpy.QtCore import QTimer
+    from qtpy.QtWidgets import QApplication, QProgressDialog
+
+    def press_cancel():
+        dlg = next((d for d in QApplication.topLevelWidgets()
+                    if isinstance(d, QProgressDialog) and d.isVisible()), None)
+        if dlg is None:
+            QTimer.singleShot(50, press_cancel)
+        else:
+            dlg.cancel()
+    QTimer.singleShot(200, press_cancel)
+    summary = w.batch(images=imgs * 3, out_dir=str(tmp_path / "cancelled"))
+    assert summary.attrs["cancelled"] and len(summary) < 6
+    assert any(f"Batch cancelled after {len(summary)} of 6 gel(s)" in m[1] for m in msgs)
+    assert w.lbl_status.text().startswith("✔ Batch cancelled")
 
 
 def test_gels_side_by_side_and_split_line(ui):

@@ -1702,8 +1702,10 @@ class AutogelWidget(QWidget):
         self.ga._log("batch", {"n_images": len(images), "out_dir": out_dir}, "started with these settings")
         summary = run_batch(images, self.ga.params, out_dir, progress)
         dlg.setValue(len(images))
-        counts = summary["status"].value_counts().to_dict()
-        msg = (f"Batch finished: {len(summary)} gel(s) - {counts.get('ok', 0)} ok, "
+        counts = summary["status"].value_counts().to_dict() if len(summary) else {}
+        done = (f"Batch cancelled after {len(summary)} of {len(images)} gel(s)" if summary.attrs.get("cancelled")
+                else f"Batch finished: {len(summary)} gel(s)")
+        msg = (f"{done} - {counts.get('ok', 0)} ok, "
                f"{counts.get('check', 0)} to check, {counts.get('error', 0)} error(s).\n"
                f"Overview: {os.path.join(out_dir, 'batch_report.md')}")
         self.lbl_status.setText("✔ " + msg.splitlines()[0])

@@ -62,9 +62,11 @@ def run_batch(images: list[str], template: Params | str, out_dir: str, progress=
     os.makedirs(out_dir, exist_ok=True)
     tp = template_params(template)
     rows, all_bands = [], []
+    cancelled = False
     for i, path in enumerate(images):
         name = os.path.basename(path)
         if progress is not None and progress(i, len(images), name) is False:
+            cancelled = True
             break
         row = {"gel": name, "path": os.path.abspath(path)}
         try:
@@ -92,7 +94,9 @@ def run_batch(images: list[str], template: Params | str, out_dir: str, progress=
             row.update({"status": "error", "warnings": f"{type(e).__name__}: {e}",
                         "traceback": traceback.format_exc(limit=3)})
         rows.append(row)
-    summary = pd.DataFrame(rows)
+    summary = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["gel", "path", "status"])
+    # how many of the chosen gels were analysed (the user may cancel in between)
+    summary.attrs.update({"n_images": len(images), "cancelled": cancelled})
     bands = pd.concat(all_bands, ignore_index=True) if all_bands else pd.DataFrame()
     summary.to_csv(os.path.join(out_dir, "batch_summary.csv"), index=False)
     bands.to_csv(os.path.join(out_dir, "batch_bands.csv"), index=False)
@@ -109,8 +113,11 @@ def _write_batch_report(summary: pd.DataFrame, tp: Params, path: str):
     order = {"error": 0, "check": 1, "ok": 2}
     s = summary.assign(_o=summary["status"].map(order)).sort_values(["_o", "gel"])
     lines = [f"# Batch analysis – {len(summary)} gel(s)\n",
-             f"*autogel {__version__} · {_dt.datetime.now().isoformat(timespec='seconds')}*\n",
-             "## Settings used for all gels\n",
+             f"*autogel {__version__} · {_dt.datetime.now().isoformat(timespec='seconds')}*\n"]
+    if summary.attrs.get("cancelled"):
+        lines.append(f"**Cancelled** after {len(summary)} of {summary.attrs.get('n_images')} gel(s); "
+                     "the remaining gels were not analysed.\n")
+    lines += ["## Settings used for all gels\n",
              f"- lanes per gel row: {tp.n_lanes or 'auto'}; gel rows: {tp.n_tiers or 1}",
              f"- background: {tp.bg_method}; min S/N {tp.min_snr}; min lane coverage {tp.min_coverage}",
              f"- marker: {tp.marker_preset or '–'} in lane(s) {', '.join(map(str, tp.marker_lanes)) or '–'}",

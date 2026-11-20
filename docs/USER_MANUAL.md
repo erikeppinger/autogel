@@ -491,6 +491,15 @@ The JSON Lines log carries the same steps with every parameter, for scripts or d
 autogel then processes every image automatically. Each image still gets its own orientation,
 lanes and bands.
 
+**Same layout only:** the lane count and the marker lanes from the settings are used for every
+image. A gel with a different number of lanes is analysed with the wrong lanes and is not
+reliably flagged (an automatic check was tried: on the benchmark gels it raised a false alarm on
+about 1 gel in 5 and caught only about half of the wrong counts). Put gels with different
+layouts into separate batches, or set the lane count to *ask* so that each gel is counted.
+
+**Cancel** in the progress window stops after the gel that is running. The gels done so far are
+kept, and the overview says *cancelled after N of M gel(s)*.
+
 Output:
 
 | File | Content |
