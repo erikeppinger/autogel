@@ -30,6 +30,8 @@ The better the picture, the better the numbers.
   the results. autogel marks such bands as *saturated*. Take a shorter exposure if you want to
   measure them.
 - **Include the wells** (the pockets at the top) in the picture.
+- autogel reads what the imaging device saved in the file (for example the exposure time) and
+  puts it in the report. It warns you when a picture was converted and has lost detail.
 - Straight, evenly run lanes give the best results. Smiling or crooked gels work too, but check
   the lanes.
 
@@ -62,6 +64,8 @@ Changes take effect half a second after you stop.
 
 - Click **Detect bands (all lanes)**.
 - Each band gets a box. Grey boxes are bands autogel is unsure about – have a look at them.
+- **Next band to check ▸** takes you to each grey box in turn (the most doubtful first), then
+  to the AI's suggestions. Keep the box, move it, or press Delete, then click again.
 - **AI second opinion** lets a trained helper check the bands and suggest ones that were
   missed (shown in green). It runs on your computer; the picture is not sent anywhere. The
   first time, it asks before downloading what it needs.
@@ -99,6 +103,16 @@ also share it so it is included for everyone.
 - **Batch** analyses more pictures with the same settings. Every picture gets the same number
   of lanes and the same marker lanes, so put only gels with the same layout in one batch.
   **Cancel** stops after the gel that is running; the gels done so far are kept.
+- **Gels with different layouts:** click **Make sample sheet…** and choose the pictures.
+  autogel saves an Excel sheet with one row per gel, already filled in with the current
+  settings. Change the rows of gels that differ (number of lanes, marker lanes, ladder, lane
+  names), save it, then click **Batch with sample sheet…**.
+
+**Comparing gels with each other:** load the same reference sample on every gel and enter its
+lane as **reference lane** (under *Compare lanes*, or in the sample sheet). Every band is then
+shown relative to the same band in the reference sample. Because each gel is compared with its
+own reference, differences in staining or exposure between gels cancel out. A batch puts all
+gels side by side in one table (page *compare across gels* of the batch's Excel file).
 
 # Western blots and RNA gels
 
@@ -117,6 +131,8 @@ also share it so it is included for everyone.
 | Lanes have the wrong width | Resize the boxes by hand (layer **lanes**, arrow tool) |
 | Spots or dust found as bands | Delete them (layer **bands**), or in Expert mode raise **min. height vs. gel** to ignore weak bands |
 | A faint band is missing | Draw it (layer **bands**, rectangle tool), or try **AI second opinion** |
+| Many grey boxes | Click **Next band to check ▸** and go through them one by one |
+| Gels in a batch have different layouts | Use **Make sample sheet…** and **Batch with sample sheet…** |
 | Sizes look wrong | Check the chosen ladder and marker lanes; read the message after **Calibrate & quantify** |
 | A band is marked *saturated* | Its amount is too low – take a shorter exposure if you need it |
 | autogel feels slow | Close other programs; very large pictures are reduced automatically |

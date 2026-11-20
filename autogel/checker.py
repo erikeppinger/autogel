@@ -17,7 +17,8 @@ from scipy import ndimage
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "band_checker.json")
 
 FEATURES = ["log_snr_lane", "log_snr_gel", "log_rel_gel", "log_rel_lane", "coverage", "log_width_rel",
-            "log_neighbour", "rf", "log_bands_in_lane", "log_peakedness", "saturated"]
+            "log_neighbour", "rf", "log_bands_in_lane", "log_peakedness", "saturated",
+            "near_top", "near_bottom"]
 
 
 def band_features(ga) -> pd.DataFrame:
@@ -63,6 +64,10 @@ def band_features(ga) -> pd.DataFrame:
             "log_bands_in_lane": np.log10(lane_n[b.lane]),
             "log_peakedness": np.log10(h * w / max(v, 1e-9) + 1e-6),
             "saturated": float(s > 0),
+            # right under the well or at the lane's end (wells, dye front, gel edge): false
+            # boxes gather there; Rf alone (a straight line in the model) cannot say "near either end"
+            "near_top": float(np.exp(-max(rf, 0.0) / 0.05)),
+            "near_bottom": float(np.exp(-max(1.0 - rf, 0.0) / 0.08)),
         })
     return pd.DataFrame(rows, columns=FEATURES)
 

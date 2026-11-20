@@ -103,7 +103,11 @@ needs less memory and no OpenGL.
 | Set the exposure so the bands you want to quantify are **not saturated** | Quantify bands flagged *saturated*. Their intensity is underestimated |
 | Image the whole gel including the wells | Crop through the wells |
 
-autogel warns you about JPEG input, 8-bit images and saturated pixels.
+autogel warns you about JPEG input, 8-bit images, 16-bit files that hold only 8-bit data
+(converted pictures) and saturated pixels. From TIFF files it reads what the imaging device
+stored (device, software, date, exposure time and whether the picture was edited after
+capture, as far as the file contains them) and lists it in the report. The exposure is also
+shown next to the file name in the panel.
 
 ---
 
@@ -240,11 +244,16 @@ The **autogel** panel on the right guides you from top to bottom.
       ladder bands on Test_2). Turn it on for close doublets and check the result.
 - **Band checker** (learned from hand-labelled gels, always on as information):
   - Every band gets a `band_probability` (0–1) of being a real band. Doubtful bands
-    (below 0.1) are drawn in grey.
+    (below 0.1) are drawn in grey, except in marker lanes (the calibration checks those).
+  - **Next band to check ▸** (both modes) selects each grey band in turn, most doubtful first,
+    then the AI's suggestions (green), zooms to it and names the lane. Keep, move or delete it
+    and click again; deleting a band does not skip the next one.
   - *remove unlikely bands* (Expert, off by default) removes bands below the chosen value after
     detection, **never in marker lanes**.
   - On gels it never saw (five other labs plus GelGenie's test images), 0.1 raised the share of
-    real bands among the detections from 49 % to 58 % and kept 98 % of the real bands.
+    real bands among the detections from 49 % to 58 % and kept 98.8 % of the real bands
+    (0.2: 65 % and 95.8 %). It also knows how close a band sits to the wells or to the end of
+    the lane, where most false bands are (wells, dye front, gel edge).
   - The model is a few kilobytes and adds no measurable time.
 - **AI second opinion** (button, both modes; optional extra):
   - GelGenie's band-recognition network (Aquilina et al., *Nature Communications* 2025,
@@ -411,8 +420,12 @@ the program.
     every band is divided by it (`normalised`).
   - *total lane signal*: divide by the lane's whole signal, e.g. from an added total-protein
     image chosen under *loading control from* (Expert).
-  - **reference lane**: `fold_change` = normalised value ÷ the same band group's value in that
-    lane (e.g. the untreated control).
+  - **reference lane** (also without normalisation): `fold_change` = normalised value (or,
+    without normalisation, the band volume) ÷ the same band group's value in that lane, e.g. the
+    untreated control.
+  - **Comparing gels:** load the same reference sample on every gel and set it as reference
+    lane. Each gel is divided by its own reference, so staining and exposure differences
+    between gels cancel out. A batch then writes `batch_compare.csv` (see section 4).
   - Two-colour blots (Expert): *loading control from* = the channel with the loading control,
     *bands measured in* = the channel with the target; detect bands on *all channels*.
 - **RNA integrity:** per lane the 28S/18S volume ratio and the share of the signal below 18S.
@@ -495,7 +508,28 @@ lanes and bands.
 image. A gel with a different number of lanes is analysed with the wrong lanes and is not
 reliably flagged (an automatic check was tried: on the benchmark gels it raised a false alarm on
 about 1 gel in 5 and caught only about half of the wrong counts). Put gels with different
-layouts into separate batches, or set the lane count to *ask* so that each gel is counted.
+layouts into separate batches, or use a **sample sheet**:
+
+**Sample sheet (gels with different layouts):**
+1. Click **Make sample sheet…**, choose the pictures and where to save the sheet. autogel writes
+   an Excel file with one row per picture, filled in with the current settings, and a second
+   sheet *how to fill in*.
+2. In Excel, change the rows of gels that differ, and save.
+3. Click **Batch with sample sheet…**, choose the sheet and an output folder.
+
+| Column | Meaning | Empty cell |
+|---|---|---|
+| `image` | picture file, next to the sheet or a full path | row is skipped |
+| `lanes` | lanes per gel row, ladder lanes included | current setting |
+| `gel_rows` | gels stacked in one picture | current setting |
+| `marker_lanes` | ladder lane(s), e.g. `1, 12` | current setting |
+| `ladder` | ladder name exactly as in the ladder list (case does not matter) | current ladder |
+| `lane_names` | names from left to right, separated by commas | lane numbers |
+| `reference_lane` | lane of the reference sample (comparing gels) | current setting |
+
+A CSV file works too (`,` or `;` as separator). A mistake (unknown ladder, marker lane beyond the
+lanes, text where a number belongs) is reported with its row number before anything runs; a
+missing picture is listed as an error and the batch carries on.
 
 **Cancel** in the progress window stops after the gel that is running. The gels done so far are
 kept, and the overview says *cancelled after N of M gel(s)*.
@@ -507,7 +541,8 @@ Output:
 | `batch_report.md` | overview: settings used, one line per gel with status **✔ ok / ⚠ check / ✖ error**, problem gels first |
 | `batch_summary.csv` | the same as a table (lanes, bands, saturated bands, mass-curve R², warnings) |
 | `batch_bands.csv` | all bands of all gels, with a `gel` column, for pivot tables and statistics |
-| `batch_autogel.xlsx` | both tables in one workbook |
+| `batch_compare.csv` | only with a reference lane: one row per sample (gel, lane), one column per band size, each value relative to the same band in that gel's reference lane. Comparable between gels when every gel carries the same reference sample; bands are matched by size, so a ladder is needed |
+| `batch_autogel.xlsx` | all tables in one workbook |
 | `<gel>_autogel/` | the complete normal export of every gel, including its **session** |
 
 **To correct one gel of a batch:** open its `<gel>_session.json` with **Open session…**, fix the
@@ -522,6 +557,7 @@ autogel run gel.tif --lanes 20 --marker-lanes 1 20 --gel "agarose 1.0 %"     # s
 autogel run gel.tif --lanes 20 --marker-lanes 1 20 --size-range 500 10000
 autogel run --session gel_autogel/gel_session.json      # reproduce a saved analysis exactly
 autogel batch D:\gels\2026-11 --template gel_autogel/gel_session.json --out D:\results\2026-11
+autogel batch --sheet D:\gels\samples.xlsx --template gel_autogel/gel_session.json --out D:\results
 autogel ladders NEB                                    # list ladders (filter by text)
 ```
 

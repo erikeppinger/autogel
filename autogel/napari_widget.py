@@ -466,6 +466,13 @@ class AutogelWidget(QWidget):
                      "bands it sees where autogel has none are added (green). Check and correct them as usual.")
         b.clicked.connect(self.ai_second_opinion)
         f.addRow(b)
+        b = QPushButton("Next band to check  ▸")
+        b.setToolTip("Jumps to the next band worth a look: grey bands autogel is unsure about (most "
+                     "doubtful first), then bands the AI suggested (green). Keep it, move it, or press "
+                     "Delete to remove it, then click again.")
+        b.clicked.connect(lambda: self.next_band_to_check())
+        self.btn_next_check = b
+        f.addRow(b)
         b = QPushButton("Re-detect bands in selected lane")
         b.clicked.connect(self._redetect_selected)
         f.addRow(b)
@@ -570,7 +577,7 @@ class AutogelWidget(QWidget):
         for w in (self.sp_ref, self.cb_mass, self.ed_loads):
             self._expert_items.append((f, w))
         b = QPushButton("Calibrate && quantify")
-        b.clicked.connect(self.quantify)
+        b.clicked.connect(lambda: self.quantify())   # clicked passes "checked" as 1st arg
         f.addRow(b)
         self.lbl_cal = QLabel("")
         self.lbl_cal.setWordWrap(True)
@@ -606,7 +613,9 @@ class AutogelWidget(QWidget):
         self.sp_ref_lane = QSpinBox()
         self.sp_ref_lane.setRange(0, 999)
         self.sp_ref_lane.setSpecialValueText("none")
-        self.sp_ref_lane.setToolTip("Fold change relative to this lane (e.g. the untreated control)")
+        self.sp_ref_lane.setToolTip("Each band relative to the same band in this lane, e.g. the untreated "
+                                    "control. Load the same reference sample on every gel to compare gels "
+                                    "in a batch.")
         f.addRow("reference lane", self.sp_ref_lane)
         self.chk_rna = QCheckBox("RNA integrity (28S/18S, degradation)")
         self.chk_rna.setToolTip("Total RNA: 28S/18S ratio and the share of signal below 18S, per lane")
@@ -652,8 +661,24 @@ class AutogelWidget(QWidget):
         b.setToolTip("Analyse many images with this gel's settings (lanes, gel rows, ladder, marker "
                      "lanes, size range, detection). Each gel gets its own export and session; "
                      "batch_report.md lists the gels that need a look.")
-        b.clicked.connect(self.batch)
+        b.clicked.connect(lambda: self.batch())   # not batch(images=False)
+        self.btn_batch = b
         f.addWidget(b)
+        row = QHBoxLayout()
+        b = QPushButton("Make sample sheet…")
+        b.setToolTip("Gels with different layouts in one batch: choose the pictures, and autogel writes an "
+                     "Excel sheet with one row per gel, filled in with the current settings. Change the "
+                     "lanes, marker lanes, ladder or lane names where a gel differs.")
+        b.clicked.connect(lambda: self.make_sample_sheet())
+        self.btn_make_sheet = b
+        row.addWidget(b)
+        b = QPushButton("Batch with sample sheet…")
+        b.setToolTip("Analyse the gels listed in a sample sheet, each with its own lanes, marker lanes, "
+                     "ladder and lane names. Empty cells use the current settings.")
+        b.clicked.connect(lambda: self.batch_from_sheet())
+        self.btn_sheet_batch = b
+        row.addWidget(b)
+        f.addLayout(row)
         lay.addWidget(g)
         lay.addStretch()
 
@@ -821,6 +846,7 @@ class AutogelWidget(QWidget):
         ga.listeners.append(self._on_log)
         self.df = None
         self._focus_lane = None
+        self._last_checked = None
         self._updating = True
         try:
             self.chk_invert.blockSignals(True)
@@ -876,7 +902,9 @@ class AutogelWidget(QWidget):
                 self._zoom_hooked = True
         finally:
             self._updating = False
-        self.lbl_file.setText(os.path.basename(ga.path) + f"  ({a.shape[1]}×{a.shape[0]} px, {ga.gel.dtype})")
+        exp = (ga.gel.info or {}).get("exposure")
+        self.lbl_file.setText(os.path.basename(ga.path) + f"  ({a.shape[1]}×{a.shape[0]} px, {ga.gel.dtype}"
+                              + (f", exposure {exp}" if exp else "") + ")")
         self.lbl_warn.setText("\n".join("⚠ " + w for w in ga.gel.warnings))
         self._refresh_layers()
 
@@ -1218,14 +1246,8 @@ class AutogelWidget(QWidget):
                 edge = [col["band"] if b.source in ("auto", "ladder") else AI_BAND if b.source == "ai"
                         else col["user_band"] for b in ga.bands]
                 # doubtful bands in grey: low band-checker probability or not confirmed by the AI
-                df = self.df
-                if df is not None and len(df) == len(ga.bands):
-                    doubt = np.zeros(len(df), bool)
-                    if "band_probability" in df:
-                        doubt |= df["band_probability"].to_numpy() < DOUBT_PROBABILITY
-                    if "ai_support" in df:
-                        doubt |= ~df["ai_support"].astype(bool).to_numpy()
-                    edge = [DOUBT_BAND if d and b.source == "auto" else e for e, d, b in zip(edge, doubt, ga.bands)]
+                doubt = set(self._doubtful())
+                edge = [DOUBT_BAND if i in doubt else e for i, e in enumerate(edge)]
                 # light fill: short (faint) bands stay visible as a box when zoomed out,
                 # instead of their two edges merging into one line
                 face = [to_rgba(c, 0.18) for c in edge]
@@ -1275,6 +1297,75 @@ class AutogelWidget(QWidget):
                 layer.refresh_text()
             finally:
                 self._updating = False
+
+    def _check_keys(self) -> dict[int, tuple]:
+        """Bands worth a look -> sort key, in the order 'Next band to check' visits them:
+        grey bands autogel is unsure about (low band-checker probability or not confirmed by
+        the AI second opinion; not in marker lanes), most doubtful first; then the AI's
+        suggestions (green)."""
+        ga, df = self.ga, self.df
+        if ga is None:
+            return {}
+        keys = {i: (1, 0.0, b.lane, b.y) for i, b in enumerate(ga.bands) if b.source == "ai"}
+        if df is None or len(df) != len(ga.bands) or not len(df):
+            return keys
+        doubt = np.zeros(len(df), bool)
+        prob = np.ones(len(df))
+        if "band_probability" in df:
+            prob = np.nan_to_num(df["band_probability"].to_numpy(float), nan=1.0)
+            doubt |= prob < DOUBT_PROBABILITY
+        if "ai_support" in df:
+            doubt |= ~df["ai_support"].astype(bool).to_numpy()
+        markers = {L - 1 for L in ga.params.marker_lanes}   # checked by the calibration instead
+        for i, b in enumerate(ga.bands):
+            if doubt[i] and b.source == "auto" and b.lane not in markers:
+                keys[i] = (0, float(prob[i]), b.lane, b.y)
+        return keys
+
+    def _doubtful(self) -> list[int]:
+        """Grey (unsure) automatic bands, most doubtful first."""
+        keys = self._check_keys()
+        return sorted((i for i, k in keys.items() if k[0] == 0), key=keys.get)
+
+    def next_band_to_check(self):
+        """Select and centre the next grey or green band, so it can be kept, moved or deleted.
+        Continues after the band shown last, so deleting it does not skip the next one."""
+        if not self._need():
+            return
+        keys = self._check_keys()
+        todo = sorted(keys, key=keys.get)
+        if not todo:
+            self._last_checked = None
+            msg = "No bands left to check: no grey (unsure) or green (AI) bands."
+            self.lbl_status.setText("✔ " + msg)
+            self._info(msg)
+            return
+        last = getattr(self, "_last_checked", None)
+        pos = next((n for n, i in enumerate(todo) if last is None or keys[i] > last), 0)
+        i = todo[pos]
+        self._last_checked = keys[i]
+        b = self.ga.bands[i]
+        l = self.ga.lanes[b.lane]
+        bands = self.viewer.layers["bands"]
+        self.viewer.layers.selection.active = bands
+        bands.mode = "select"
+        bands.selected_data = {i}
+        try:   # centre on the band; zoom in (never out) to about five lanes across
+            cam = self._camera()
+            cam.center = (float(b.y), float((l.x0 + l.x1) / 2 + l.dx(b.y)))
+            view = self.viewer.window._qt_viewer          # private: size of the image view
+            lane_w = max(float(np.median([q.x1 - q.x0 for q in self.ga.lanes])), 1.0)
+            target = min(view.width() / (5 * lane_w), view.height() / (self.ga.data.shape[0] / 3))
+            if np.isfinite(target) and target > float(cam.zoom):
+                cam.zoom = target
+        except Exception:  # noqa: BLE001 - centring is a convenience only
+            pass
+        self._band_selected()
+        kind = "unsure (grey)" if b.source == "auto" else "suggested by the AI (green)"
+        msg = (f"Band {pos + 1} of {len(todo)} to check: lane {b.lane + 1}, {kind}. "
+               "Keep it, move it, or press Delete to remove it.")
+        self.lbl_status.setText("▸ " + msg)
+        self._info(msg)
 
     def _lane_selected(self):
         i = self._selected_lane()
@@ -1665,29 +1756,32 @@ class AutogelWidget(QWidget):
             return
         self._info(f"exported to {out}")
 
-    def batch(self, images: list[str] | None = None, out_dir: str | None = None):
+    def batch(self, images: list[str] | None = None, out_dir: str | None = None,
+              sheet: list[dict] | None = None):
         if not self._need():
             return
-        from qtpy.QtWidgets import QProgressDialog
-
         from .batch import run_batch
         try:
             self._apply_marker()
         except ValueError as e:
             QMessageBox.critical(self, "autogel", str(e))
             return
-        if images is None:
+        if images is None and sheet is None:
             images, _ = QFileDialog.getOpenFileNames(
                 self, "Gels to analyse with the current settings", os.path.dirname(self.ga.path),
                 "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp)")
-        if not images:
+        images = list(images or [])
+        if not images and not sheet:
             return
+        n = len(images) + len(sheet or [])
         if out_dir is None:
+            first = images[0] if images else sheet[0]["path"]
             out_dir = QFileDialog.getExistingDirectory(self, "Output folder for the batch",
-                                                       os.path.dirname(images[0]))
+                                                       os.path.dirname(first))
         if not out_dir:
             return
-        dlg = QProgressDialog("Batch analysis …", "Cancel", 0, len(images), self)
+        from qtpy.QtWidgets import QApplication, QProgressDialog
+        dlg = QProgressDialog("Batch analysis …", "Cancel", 0, n, self)
         dlg.setWindowTitle("autogel batch")
         dlg.setMinimumDuration(0)
 
@@ -1695,15 +1789,15 @@ class AutogelWidget(QWidget):
             dlg.setValue(i)
             dlg.setLabelText(f"Gel {i + 1} of {n}: {name}")
             self.lbl_status.setText(f"⏳ Batch: gel {i + 1} of {n} ({name}) …")
-            from qtpy.QtWidgets import QApplication
             QApplication.processEvents()
             return not dlg.wasCanceled()
 
-        self.ga._log("batch", {"n_images": len(images), "out_dir": out_dir}, "started with these settings")
-        summary = run_batch(images, self.ga.params, out_dir, progress)
-        dlg.setValue(len(images))
+        self.ga._log("batch", {"n_images": n, "out_dir": out_dir, "sample_sheet": bool(sheet)},
+                     "started with these settings")
+        summary = run_batch(images, self.ga.params, out_dir, progress, sheet=sheet)
+        dlg.setValue(n)
         counts = summary["status"].value_counts().to_dict() if len(summary) else {}
-        done = (f"Batch cancelled after {len(summary)} of {len(images)} gel(s)" if summary.attrs.get("cancelled")
+        done = (f"Batch cancelled after {len(summary)} of {n} gel(s)" if summary.attrs.get("cancelled")
                 else f"Batch finished: {len(summary)} gel(s)")
         msg = (f"{done} - {counts.get('ok', 0)} ok, "
                f"{counts.get('check', 0)} to check, {counts.get('error', 0)} error(s).\n"
@@ -1711,6 +1805,61 @@ class AutogelWidget(QWidget):
         self.lbl_status.setText("✔ " + msg.splitlines()[0])
         QMessageBox.information(self, "autogel batch", msg)
         return summary
+
+    def make_sample_sheet(self, images: list[str] | None = None, path: str | None = None):
+        """Write an Excel sheet (one row per chosen picture) filled in with the current settings."""
+        if not self._need():
+            return
+        from .batch import write_sample_sheet
+        try:
+            self._apply_marker()
+        except ValueError as e:
+            QMessageBox.critical(self, "autogel", str(e))
+            return
+        if images is None:
+            images, _ = QFileDialog.getOpenFileNames(
+                self, "Pictures for the sample sheet", os.path.dirname(self.ga.path),
+                "Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp)")
+        if not images:
+            return
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save sample sheet", os.path.join(os.path.dirname(images[0]), "sample_sheet.xlsx"),
+                "Excel (*.xlsx)")
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            write_sample_sheet(path, images, self.ga.params)
+        except OSError as e:     # e.g. the sheet is open in Excel
+            QMessageBox.critical(self, "autogel", f"Could not save the sample sheet:\n{e}")
+            return
+        msg = (f"Sample sheet saved: {path}\nOpen it in Excel, change the rows of gels that differ, save it, "
+               "then click 'Batch with sample sheet…'.")
+        self.lbl_status.setText(f"✔ Sample sheet saved ({len(images)} pictures)")
+        QMessageBox.information(self, "autogel", msg)
+        return path
+
+    def batch_from_sheet(self, sheet_path: str | None = None, out_dir: str | None = None):
+        """Batch over the gels of a sample sheet, each with its own lanes, ladder and names."""
+        if not self._need():
+            return
+        from .batch import read_sample_sheet
+        if sheet_path is None:
+            sheet_path, _ = QFileDialog.getOpenFileName(
+                self, "Sample sheet", os.path.dirname(self.ga.path), "Sample sheet (*.xlsx *.xls *.csv)")
+        if not sheet_path:
+            return
+        try:
+            sheet = read_sample_sheet(sheet_path)
+        except (ValueError, OSError) as e:
+            QMessageBox.critical(self, "autogel", str(e))
+            return
+        except Exception as e:  # noqa: BLE001 - unreadable file: say so plainly
+            QMessageBox.critical(self, "autogel", f"Could not read the sample sheet ({type(e).__name__}): {e}")
+            return
+        return self.batch(images=[], out_dir=out_dir, sheet=sheet)
 
     def save_session(self):
         if not self._need():

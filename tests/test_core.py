@@ -704,9 +704,155 @@ def test_batch_cancel_is_reported(tmp_path, stop_at):
     imgs = [make_gel(str(tmp_path / f"g{i}.tif"), lanes=standard_lanes(), seed=i) for i in range(3)]
     out = tmp_path / "out"
     s = run_batch(imgs, Params(n_lanes=10), str(out), progress=lambda i, n, name: i < stop_at)
-    assert len(s) == stop_at and s.attrs == {"n_images": 3, "cancelled": True}
+    assert len(s) == stop_at and s.attrs["n_images"] == 3 and s.attrs["cancelled"] is True
     report = (out / "batch_report.md").read_text(encoding="utf-8")
     assert f"**Cancelled** after {stop_at} of 3 gel(s)" in report
     full = run_batch(imgs[:1], Params(n_lanes=10), str(tmp_path / "full"))
     assert full.attrs["cancelled"] is False
     assert "Cancelled" not in (tmp_path / "full" / "batch_report.md").read_text(encoding="utf-8")
+
+
+def test_sample_sheet_batch_with_different_layouts(tmp_path):
+    # user request: batch needed every gel to have the same layout
+    import pandas as pd
+
+    from autogel.batch import read_sample_sheet, run_batch, write_sample_sheet
+    lad, _ = ladder(sizes=SIZES)
+    a = make_gel(str(tmp_path / "ten.tif"), lanes=standard_lanes())
+    six = {0: lad, **{k: [(y_for_size(2500), 6000, 5)] for k in range(1, 5)}}
+    b = make_gel(str(tmp_path / "six.tif"), n_lanes=6, lanes=six, seed=1)
+    tp = Params(n_lanes=10, marker_lanes=[1, 10], marker_preset="custom", marker_sizes=SIZES,
+                marker_masses=[10.0] * len(SIZES))
+    sheet = tmp_path / "sheet.xlsx"
+    write_sample_sheet(str(sheet), [a, b], tp)
+    df = pd.read_excel(sheet, dtype=object)
+    assert list(df.image) == ["ten.tif", "six.tif"]          # relative to the sheet
+    assert list(df.lanes) == [10, 10] and df.marker_lanes[0] == "1, 10"
+    # the user edits the second gel's row in Excel
+    df.loc[1, ["lanes", "marker_lanes", "lane_names"]] = [6, "1", "ladder, s1, s2, s3, s4, empty"]
+    df.to_excel(sheet, sheet_name="gels", index=False)
+    rows = read_sample_sheet(str(sheet))
+    assert rows[1]["n_lanes"] == 6 and rows[1]["marker_lanes"] == [1] and len(rows[1]["lane_names"]) == 6
+    out = tmp_path / "out"
+    s = run_batch([], tp, str(out), sheet=rows)
+    assert list(s.lanes) == [10, 6] and list(s.status) == ["ok", "ok"], s.warnings.tolist()
+    assert list(s.sheet_row) == [2, 3]
+    bands = pd.read_csv(out / "batch_bands.csv")
+    six_b = bands[bands.gel == "six.tif"]
+    assert set(six_b.lane_name) >= {"ladder", "s1", "s4"}
+    assert six_b[six_b.lane_name == "s2"]["size_bp"].iloc[0] == pytest.approx(2500, rel=0.03)
+    assert "sample sheet" in (out / "batch_report.md").read_text(encoding="utf-8")
+
+
+def test_sample_sheet_csv_and_mistakes(tmp_path):
+    from autogel.batch import read_sample_sheet, run_batch
+    from autogel.markers import PRESETS
+    name = next(iter(PRESETS))
+    p = tmp_path / "s.csv"
+    # German Excel writes ';' and the user may name the columns a little differently
+    p.write_text(f"Picture;Lanes;Marker lanes;Ladder;Names\nx.tif;3;1;{name.upper()};a, b, c\n;;;;\n",
+                 encoding="utf-8-sig")
+    rows = read_sample_sheet(str(p))
+    assert len(rows) == 1 and rows[0]["ladder"] == name and rows[0]["lane_names"] == ["a", "b", "c"]
+    assert rows[0]["path"] == os.path.join(str(tmp_path), "x.tif")
+    s = run_batch([], Params(), str(tmp_path / "o"), sheet=rows)       # picture missing: reported, no crash
+    assert s.status.tolist() == ["error"] and "not found" in s.warnings[0]
+    for text, msg in (("image;ladder\nx.tif;No Such Ladder\n", "row 2: ladder 'No Such Ladder'"),
+                      ("image;lanes;marker lanes\nx.tif;4;1, 9\n", "row 2: marker lane 9"),
+                      ("image;lanes\nx.tif;four\n", "must be numbers"),
+                      ("image;lanes;reference lane\nx.tif;4;5\n", "row 2: reference lane 5"),
+                      ("file name;lanes\nx.tif;4\n", "needs a column 'image'"),
+                      ("image;lanes\n;4\n", "lists no pictures")):
+        p.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match=msg):
+            read_sample_sheet(str(p))
+
+
+def test_compare_gels_through_a_reference_sample(tmp_path):
+    # the same reference sample (lane 2) on every gel makes gels comparable, whatever the exposure
+    from autogel.batch import run_batch
+    lad, _ = ladder(sizes=SIZES)
+    imgs = []
+    for k, (scale, sample) in enumerate(((1.0, 6000), (2.0, 750))):
+        lanes = {0: [(y, a * scale, s) for y, a, s in lad], 9: [(y, a * scale, s) for y, a, s in lad],
+                 1: [(y_for_size(2500), 3000 * scale, 5), (y_for_size(800), 2000 * scale, 5)],
+                 2: [(y_for_size(2500), sample * scale, 5), (y_for_size(800), 2000 * scale, 5)]}
+        imgs.append(make_gel(str(tmp_path / f"g{k}.tif"), lanes=lanes, seed=k))
+    tp = Params(n_lanes=10, marker_lanes=[1, 10], marker_preset="custom", marker_sizes=SIZES,
+                marker_masses=[10.0] * len(SIZES), reference_lane=2)
+    out = tmp_path / "out"
+    run_batch(imgs, tp, str(out))
+    import pandas as pd
+    t = pd.read_csv(out / "batch_compare.csv")
+    def column(size):
+        return next(c for c in t.columns if c.endswith("(relative to reference)")
+                    and abs(float(c.split()[0]) / size - 1) < 0.04)
+    col, other = column(2500), column(800)
+    assert col.startswith("2500 ")
+    val = {(r.gel, r.lane): r[col] for _, r in t.iterrows()}
+    assert val[("g0.tif", 2)] == pytest.approx(1.0) and val[("g1.tif", 2)] == pytest.approx(1.0)
+    assert val[("g0.tif", 3)] == pytest.approx(2.0, rel=0.12)
+    assert val[("g1.tif", 3)] == pytest.approx(0.25, rel=0.12)       # despite twice the exposure
+    assert t[other].dropna().between(0.85, 1.15).all()
+    assert "compare across gels" in pd.ExcelFile(out / "batch_autogel.xlsx").sheet_names
+    # without a reference lane there is nothing to compare: no file
+    run_batch(imgs[:1], Params(n_lanes=10, marker_lanes=[1, 10], marker_preset="custom", marker_sizes=SIZES),
+              str(tmp_path / "plain"))
+    assert not (tmp_path / "plain" / "batch_compare.csv").exists()
+
+
+def test_reference_lane_without_normalisation(gel):
+    # fold change vs. a reference lane also for plain gels (before: only with a Western-blot normalisation)
+    ga = GelAnalysis(gel, Params(n_lanes=10, reference_lane=2))
+    ga.detect_lanes()
+    ga.detect_bands()
+    df = ga.quantify()
+    s = df[~df.is_marker & df.fold_change.notna()]
+    assert len(s) >= 8 and s.fold_change.between(0.8, 1.25).all()      # all sample lanes are alike
+    assert (df[df.lane == 2].fold_change.dropna() == 1.0).all()
+
+
+def test_image_info_from_tiff_tags(tmp_path):
+    import base64
+
+    from autogel.imageio import image_info
+    img = (np.random.default_rng(0).random((64, 64)) * 60000).astype(np.uint16)
+    p = tmp_path / "plain.tif"
+    tifffile.imwrite(p, img, software="GelCam 2.1", datetime="2026:11:20 10:00:00",
+                     description="Exposure time = 2.5 s", metadata=None,
+                     extratags=[(271, "s", 0, "ACME", True), (272, "s", 0, "Imager 9", True)])
+    info = image_info(str(p))
+    assert info["device"] == "ACME Imager 9" and info["software"] == "GelCam 2.1"
+    assert info["taken"] == "2026:11:20 10:00:00" and info["exposure"] == "2.5 s"
+    # vendor XML in a private tag, capture settings base64-encoded inside (as the lab's imager writes)
+    capture = ("<Instruction><Type>ExposureTime</Type><Details><Value xsi:type=\"xsd:int\">900</Value>"
+               "</Details></Instruction><SoftwareVersion>10.2</SoftwareVersion>")
+    xml = (f'<Image EncodedCaptureData="{base64.b64encode(capture.encode()).decode()}"><History>'
+           "<HistoryEntry><Entry>Source: Capture</Entry></HistoryEntry>"
+           "<HistoryEntry><Entry>Brightness changed</Entry></HistoryEntry></History></Image>")
+    p2 = tmp_path / "vendor.tif"
+    tifffile.imwrite(p2, img, metadata=None, extratags=[(44445, "s", 0, xml, True)])
+    info = image_info(str(p2))
+    assert info["exposure"] == "900" and info["software"].endswith("imager software 10.2")
+    assert info["edited"] == "Brightness changed"
+    from autogel.report import _device_rows
+    assert ["Exposure", "900 (unit not stated in the file)"] in _device_rows(info)
+    # nothing readable / not a TIFF / broken file: empty, never an error
+    p3 = tmp_path / "bare.tif"
+    tifffile.imwrite(p3, img, metadata=None)
+    assert set(image_info(str(p3))) <= {"software"}            # tifffile names itself
+    (tmp_path / "broken.tif").write_bytes(b"nope")
+    assert image_info(str(tmp_path / "broken.tif")) == {} and image_info(str(tmp_path / "x.png")) == {}
+
+
+def test_16_bit_picture_converted_from_8_bit_is_flagged(tmp_path, gel):
+    from autogel.imageio import load_raw
+    raw = tifffile.imread(gel)
+    assert not any("brightness levels" in w for w in load_raw(gel)[1])
+    eight = ((raw.astype(float) / raw.max()) * 255).round().astype(np.uint16) * 257   # 8-bit data, 16-bit file
+    p = tmp_path / "converted.tif"
+    tifffile.imwrite(p, eight)
+    w = load_raw(str(p))[1]
+    assert any("holds only" in x and "converted from an 8-bit picture" in x for x in w)
+    ga = GelAnalysis(str(p), Params())
+    assert any("converted from an 8-bit" in x for x in ga.gel.warnings)

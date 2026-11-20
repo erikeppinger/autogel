@@ -477,6 +477,105 @@ def test_batch_button(ui, tmp_path):
     assert summary.attrs["cancelled"] and len(summary) < 6
     assert any(f"Batch cancelled after {len(summary)} of 6 gel(s)" in m[1] for m in msgs)
     assert w.lbl_status.text().startswith("✔ Batch cancelled")
+    # the real button: Qt passes "checked" to the slot, which once arrived as images=False
+    # and made the button silently do nothing
+    asked = []
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(QFileDialog, "getOpenFileNames",
+                   staticmethod(lambda *a, **k: (asked.append("files"), (imgs[:1], ""))[1]))
+    monkey.setattr(QFileDialog, "getExistingDirectory",
+                   staticmethod(lambda *a, **k: (asked.append("folder"), str(tmp_path / "button"))[1]))
+    try:
+        w.btn_batch.click()
+    finally:
+        monkey.undo()
+    assert asked == ["files", "folder"]
+    assert (tmp_path / "button" / "batch_report.md").exists()
+
+
+def test_sample_sheet_buttons(ui, tmp_path):
+    w, v, msgs, tmp = ui
+    ready(w)
+    import pandas as pd
+
+    from .synth import make_gel
+    lad, _ = ladder(sizes=SIZES)
+    imgs = [make_gel(str(tmp_path / "a.tif"), lanes={0: lad, 9: lad}),
+            make_gel(str(tmp_path / "b.tif"), n_lanes=6, lanes={0: lad, 3: [(y_for_size(2500), 6000, 5)]}, seed=1)]
+    sheet = str(tmp_path / "sheet.xlsx")
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: (imgs, "")))
+    monkey.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (sheet[:-5], "")))
+    try:
+        w.btn_make_sheet.click()                        # ".xlsx" is added when missing
+    finally:
+        monkey.undo()
+    df = pd.read_excel(sheet, dtype=object)
+    assert list(df.image) == ["a.tif", "b.tif"] and df.marker_lanes[0] == "1, 10"
+    assert any("Sample sheet saved" in m[1] for m in msgs)
+    df.loc[1, ["lanes", "marker_lanes", "lane_names"]] = [6, "1", "L, x, y, s, z, e"]
+    df.to_excel(sheet, index=False)
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (sheet, "")))
+    monkey.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(tmp_path / "out")))
+    try:
+        w.btn_sheet_batch.click()
+    finally:
+        monkey.undo()
+    s = pd.read_csv(tmp_path / "out" / "batch_summary.csv")
+    assert s.lanes.tolist() == [10, 6]
+    assert any("Batch finished: 2 gel(s)" in m[1] for m in msgs)
+    # a sheet with a mistake: a plain message, no batch
+    pd.DataFrame({"image": ["a.tif"], "ladder": ["no such ladder"]}).to_excel(sheet, index=False)
+    w.batch_from_sheet(sheet, str(tmp_path / "out2"))
+    assert msgs[-1][0] == "critical" and "row 2: ladder 'no such ladder'" in msgs[-1][1]
+    assert not (tmp_path / "out2").exists()
+
+
+def test_next_band_to_check(ui):
+    w, v, msgs, tmp = ui
+    ready(w)
+    assert w.btn_next_check.isVisibleTo(w)            # in Easy mode too
+    w.df = w.df.assign(band_probability=1.0)
+    w.btn_next_check.click()
+    assert "No bands left to check" in w.lbl_status.text()
+    # two unsure bands: the more doubtful one comes first, then they cycle
+    samples = [k for k, b in enumerate(w.ga.bands) if b.lane not in (0, 9)]
+    i, j = samples[2], samples[6]
+    k_marker = next(k for k, b in enumerate(w.ga.bands) if b.lane == 0)
+    w.df.loc[k_marker, "band_probability"] = 0.001     # ladder lanes: checked by the calibration
+    w.df.loc[i, "band_probability"] = 0.05
+    w.df.loc[j, "band_probability"] = 0.01
+    w._refresh_layers()
+    assert w._doubtful() == [j, i]
+    bands = v.layers["bands"]
+    for expect, nth in ((j, 1), (i, 2), (j, 1)):
+        w.btn_next_check.click()
+        assert bands.selected_data == {expect}
+        assert w._focus_lane == w.ga.bands[expect].lane
+        assert f"Band {nth} of 2 to check" in w.lbl_status.text()
+    # grey colour follows the same rule
+    from matplotlib.colors import to_rgba
+
+    from autogel.napari_widget import DOUBT_BAND
+    assert np.allclose(bands.edge_color[j], to_rgba(DOUBT_BAND))
+    assert not np.allclose(bands.edge_color[0], to_rgba(DOUBT_BAND))
+    # delete the band just shown (as with the Delete key): the next click must not skip one
+    w.btn_next_check.click()
+    assert bands.selected_data == {i}
+    w.btn_next_check.click()
+    assert bands.selected_data == {j}
+    n = len(w.ga.bands)
+    bands.remove_selected()
+    pump(1.5)                                          # edits apply after a short pause
+    assert len(w.ga.bands) == n - 1
+    w.df = w.df.assign(band_probability=1.0)           # the edit recomputed the table
+    w.df.loc[i, "band_probability"] = 0.05             # i < j: its index did not shift
+    assert i < j
+    w._refresh_layers()
+    w.btn_next_check.click()
+    assert bands.selected_data == {i}
+    assert "Band 1 of 1 to check" in w.lbl_status.text()
 
 
 def test_gels_side_by_side_and_split_line(ui):

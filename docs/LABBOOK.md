@@ -73,6 +73,8 @@ replayable log.
 | D31 | Lanes from the bands (user idea) or the regular comb, whichever explains the band blobs better; per-lane widths; well row below the gel's top edge | Lab gels with narrow ladder wells, smears and a gel smaller than the image failed completely; benchmark better in every subset |
 | D30 | Ladder-guided split of a marker band where the ladder expects a second band inside it (two-Gaussian fit near the expected row); split part = source `ladder`, used for sizes, not as ng standard | NEB 900 bp on the bright 1000 bp band's shoulder: found 34 -> 40 of 44 lanes; its volume is a model estimate, so as an ng standard it cost +2.3 points |
 | D29 | Marker bands paired with the ladder by local alignment (spacing and brightness per ng change smoothly step to step), classic search kept where clearly smoother; no ladder-guided band splitting/adding | Real ladder lanes: wells, dye front, merged pairs and misses occur together; a global curve bends around them. Splitting/adding bands gave no net gain |
+| D32 | Batch layouts per gel through a sample sheet (Excel/CSV, one row per gel, empty cell = template); gels compared through a reference sample on every gel (`fold_change`, matched by size across gels) | The same-layout rule was the main batch limit; an automatic lane-count check gave 1 false alarm in 5 gels. Dividing each gel by its own reference cancels staining and exposure differences without guessing |
+| D33 | Band checker knows the distance to the wells and to the lane end; grey marking and "Next band to check" leave marker lanes out | Most false boxes on the training gels sit above or below every real band (wells, dye front, gel edge). A hard position rule would cut real bands: they overlap. As model features they halve the real bands wrongly flagged at the same precision |
 
 ## 4. Test material
 
@@ -107,6 +109,90 @@ replayable log.
 ---
 
 ## 6. Change log
+
+### 0.5.1.dev0 – 2026-11-20 – branch `develop`: batch fix, bands to check, sample sheet, comparing gels
+User request: test the batch file dialogs in the GUI, then develop the improvements proposed after
+0.5.0 (bands to check, fewer false bands, batch with different layouts, comparing gels, what the
+imager stored). The 0.5.0 build went to first users; their feedback is pending.
+
+**Batch button did nothing (bug, found by the GUI test)**
+- Qt passes the button's *checked* value (False) to the slot, which arrived as `images=False`:
+  the method returned at once, without a message. The earlier scripted test called the method
+  directly and missed it. *Calibrate & quantify* got the same `False` as `silent`, harmless by luck.
+- Fixed with `lambda: self.batch()` (and for Calibrate). A test now presses the real button with
+  the file dialogs replaced; it fails on the old code.
+- GUI test on screen 1 with the real Windows dialogs: Batch → both 20240927 gels selected →
+  output folder → progress window → *Batch finished: 2 gel(s) – 0 ok, 2 to check*. Both say
+  "check" only because of the unknown ladder (question to the lab, Monday). Cancelling the
+  folder dialog stops quietly.
+- Tool limit seen in that test: the folder dialog's name box doesn't accept typing from the
+  automation; the gels were copied to a local scratch folder so the dialogs start there.
+
+**Next band to check ▸ (D33)**
+- Bands panel, both modes. Visits grey bands (band checker < 0.1 or not confirmed by the AI)
+  most doubtful first, then the AI's green suggestions; selects the band, centres and zooms to
+  about five lanes, shows the lane graph, says *Band n of N to check: lane L* in the status line.
+- Continues after the band shown last (a sort key, not a counter), so deleting it doesn't skip
+  the next one; tested by deleting through the layer as the Delete key does.
+- On the lab gel: 3 unsure bands; all three looked like empty spots, i.e. rightly unsure.
+
+**Fewer false bands (D33)**
+- Note: the "nathan" set is 37 DNA-gel JPEGs from one lab, not Western blots, as said in the
+  previous summary by mistake.
+- Every box autogel draws on the hand-labelled gels was collected with the current code
+  (15 758 boxes) and only the training split was examined. False boxes on the training gels:
+  1 298 below every real band, 953 above every real band, 710 in lanes without any real band,
+  the rest elsewhere. Neither position nor "a box at the same row in most lanes" separates them
+  from real bands by a rule: real bands overlap both.
+- Band checker retrained with the current detection plus two features (closeness to the wells,
+  closeness to the lane end). Test (unseen gels, same detections):
+
+| Threshold | 0.5.0 model: precision / real kept | new: precision / real kept |
+|---|---|---|
+| 0.1 (grey) | 0.584 / 97.7 % | 0.583 / **98.8 %** |
+| 0.2 | 0.647 / 92.9 % | 0.645 / **95.8 %** |
+| 0.3 | 0.695 / 87.6 % | 0.696 / **92.2 %** |
+
+  Ranking quality (AUC) 0.852 → 0.881. Same share of false boxes removed, about half as many
+  real bands wrongly flagged. Other candidate features (first/last band in the lane, Rf², a box
+  at the same row across the gel) added nothing and were left out.
+- Lab gels: grey bands 20240927_Bild1 3 → 0, Bild2 0 → 0, Test_2 7 → 7, Test_1 11 → 10; but in
+  Test_1's ladder lanes 3 → 5 real ladder bands score below 0.1. Hence marker lanes are no longer
+  marked grey (the calibration checks them; the opt-in filter never touched them).
+- Default detection is unchanged: removing boxes stays opt-in (*remove unlikely bands*).
+
+**Sample sheet (D32)**
+- *Make sample sheet…* writes an Excel file (sheet *gels*: image, lanes, gel_rows, marker_lanes,
+  ladder, lane_names, reference_lane, pre-filled with the current settings; sheet *how to fill
+  in*). *Batch with sample sheet…* runs it. CLI: `autogel batch --sheet …`.
+- Reading forgives header spellings (*Picture*, *Marker lanes*, *Names* …), `,` or `;` CSVs
+  (German Excel) and ladder names in any case. Mistakes are listed with their Excel row number
+  before anything runs; a missing picture becomes an error row and the batch carries on.
+- Test: a 10-lane and a 6-lane gel in one batch: 10 and 6 lanes found, lane names in the band
+  table, 2500 bp band sized within 3 %.
+
+**Comparing gels through a reference sample (D32)**
+- The reference lane now also works without a Western-blot normalisation (`fold_change` of the
+  band volumes). A batch writes `batch_compare.csv` (and a workbook sheet): one row per sample,
+  one column per band size (matched across gels within 4 %), values relative to the gel's own
+  reference sample. Only written when there is something to compare.
+- Test: two gels, the second exposed twice as bright: sample/reference 2.0 and 0.25 recovered
+  within 12 %, the reference itself exactly 1.
+
+**What the imager stored in the file**
+- From TIFF tags: device (Make/Model), software, date, exposure time and the edit history, as far
+  as present; also base64-encoded capture XML inside private tags (the lab's imager, version
+  10.2.21302, stores *ExposureTime* 900 for the 20240927 gels and 1250 for Test_1, unit not
+  stated, history *Source: Capture* = unedited). Shown in the report's *Image* table; the exposure
+  also next to the file name in the panel.
+- New warning: a 16-bit file holding ≤ 256 brightness levels was converted from an 8-bit picture.
+- The GelGenie benchmark TIFFs (ImageJ / GraphicsMagick exports) carry no device data; nothing is
+  shown for them.
+
+**Checked:** ruff clean; new tests (button press, next band, sample sheet core + GUI, comparing
+gels, reference lane without normalisation, image info, converted picture) each fail on the old
+code or exercise new code; full suite with the lab gels 184 passed (the plain-language test caught
+a file name in the in-app guide; reworded).
 
 ### 0.5.0 – 2026-11-19 – release: `develop` merged into `main`
 User decision: move the work on `develop` (0.5.0.dev0 – dev2 and the steps since, below) to

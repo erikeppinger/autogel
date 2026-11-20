@@ -1,7 +1,11 @@
 """Image loading, quality checks and orientation."""
 from __future__ import annotations
 
+import base64
+import binascii
+import contextlib
 import os
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -24,6 +28,7 @@ class GelImage:
     channel_names: list[str] = field(default_factory=list)
     raw_shape: tuple = ()                 # size of the file's image (before any reduction)
     reduced: int = 1                      # pixels were averaged in reduced x reduced blocks
+    info: dict = field(default_factory=dict)  # what the imaging device stored (image_info)
 
 
 def _read(path: str) -> np.ndarray:
@@ -78,6 +83,81 @@ def _combine(chans: list[np.ndarray], names: list[str]) -> tuple[np.ndarray, lis
                       "chosen under 'channel'."]
 
 
+_EXPOSURE = [
+    # XML of capture settings, e.g. <Type>ExposureTime</Type><Details><Value ...>900</Value>
+    re.compile(r"<Type>\s*Exposure\w*\s*</Type>\s*<Details>\s*<Value[^>]*>\s*([\d.]+)\s*</Value>", re.I),
+    # key = value / key: value / key="value", optionally with a unit
+    re.compile(r"\bExposure(?:[ _]?Time)?\s*(?:\(([a-z]+)\))?\s*[=:]\s*\"?\s*([\d.]+)\s*(ms|msec|s|sec|seconds)?\b",
+               re.I),
+]
+
+
+def _texts(page) -> list[str]:
+    """Readable text of a TIFF page's tags, including base64-encoded XML inside them."""
+    out = []
+    for tag in page.tags.values():
+        v = tag.value
+        if isinstance(v, bytes):
+            v = v.decode("utf-8", "ignore")
+        if not isinstance(v, str) or len(v) > 2_000_000:
+            continue
+        out.append(v)
+        for enc in re.findall(r'Encoded\w*="([A-Za-z0-9+/=\s]{40,})"', v):
+            with contextlib.suppress(ValueError, binascii.Error):
+                out.append(base64.b64decode(enc).decode("utf-8", "ignore"))
+    return out
+
+
+def image_info(path: str) -> dict:
+    """What the imaging device stored in the file, as far as it can be read: device, software,
+    date, exposure time and whether the picture was edited after capture. Never raises."""
+    info: dict = {}
+    if os.path.splitext(path)[1].lower() not in (".tif", ".tiff"):
+        return info
+    try:
+        import tifffile
+        with tifffile.TiffFile(path) as tf:
+            page = tf.pages[0]
+            tags = {t.name: t.value for t in page.tags.values()}
+            texts = _texts(page)
+    except Exception:  # noqa: BLE001 - metadata is a bonus; the picture itself loads elsewhere
+        return info
+    device = " ".join(str(tags[k]).strip() for k in ("Make", "Model") if isinstance(tags.get(k), str))
+    if device:
+        info["device"] = device
+    if isinstance(tags.get("Software"), str) and tags["Software"].strip():
+        info["software"] = tags["Software"].strip()
+    if isinstance(tags.get("DateTime"), str) and tags["DateTime"].strip():
+        info["taken"] = tags["DateTime"].strip()
+    blob = "\n".join(texts)
+    m = _EXPOSURE[0].search(blob)
+    if m:
+        info["exposure"] = m.group(1)
+    else:
+        m = _EXPOSURE[1].search(blob)
+        if m:
+            unit = m.group(1) or m.group(3) or ""
+            info["exposure"] = f"{m.group(2)} {unit}".strip()
+    m = re.search(r"<SoftwareVersion>\s*([^<]+?)\s*</SoftwareVersion>", blob)
+    if m:   # both: a Software tag next to it usually names the program that re-saved the file
+        info["software"] = "; ".join(filter(None, [info.get("software"), f"imager software {m.group(1)}"]))
+    # edit history some imagers keep (e.g. "Source: Capture", then each edit)
+    entries = [e.strip() for e in re.findall(r"<Entry>([^<]*)</Entry>", blob)]
+    if entries:
+        edits = [e for e in entries if e and not e.lower().startswith("source")]
+        info["edited"] = "; ".join(edits[:5]) if edits else "no (straight from capture)"
+    return info
+
+
+def _few_levels(arr: np.ndarray) -> int | None:
+    """Number of brightness levels of a 16-bit picture if it holds no more than 8-bit data."""
+    if arr.dtype != np.uint16 or arr.size < 1000:
+        return None
+    sample = arr.ravel()[:: max(1, arr.size // 2_000_000)]
+    n = len(np.unique(sample))
+    return n if n <= 256 else None
+
+
 def load_raw(path: str) -> tuple[np.ndarray, list[str], str]:
     chans, names, dtype = load_channels(path)
     arr, warnings = _combine(chans, names)
@@ -87,6 +167,11 @@ def load_raw(path: str) -> tuple[np.ndarray, list[str], str]:
                         "use the original TIFF for quantification.")
     if arr.dtype == np.uint8:
         warnings.append("8-bit image: limited dynamic range; prefer the 16-bit TIFF export.")
+    levels = _few_levels(arr)
+    if levels:
+        warnings.append(f"This 16-bit picture holds only {levels} brightness levels: it was probably "
+                        "converted from an 8-bit picture. Use the original file from the imaging device "
+                        "for amounts.")
     return arr, warnings, str(arr.dtype)
 
 
@@ -374,7 +459,8 @@ def load_gel(path: str, orientation: dict | None = None, invert: bool | None = N
         warnings.append(f"{n_sat} saturated pixels (level: {sat_note}). "
                         "Bands containing them are flagged and their intensity is underestimated.")
     g = GelImage(data=data, raw_max=mask, path=path, dtype=dtype,
-                 saturation_level=sat, warnings=warnings, orientation=o, raw_shape=raw_shape, reduced=f)
+                 saturation_level=sat, warnings=warnings, orientation=o, raw_shape=raw_shape, reduced=f,
+                 info=image_info(path))
     if len(chans) > 1:
         for c, n in zip(chans, names):
             d, m = orient_channel(c, o, bool(o["invert"]))

@@ -38,7 +38,10 @@ def main(argv=None):
     r.add_argument("--invert", action="store_true", help="dark bands on light background (Coomassie)")
     r.add_argument("--bg", default="rolling_ball", choices=["rolling_ball", "lane_edges", "none"])
     b = sub.add_parser("batch", help="analyse many gels with the settings of a template session")
-    b.add_argument("inputs", nargs="+", help="image files, folders or wildcards")
+    b.add_argument("inputs", nargs="*", help="image files, folders or wildcards")
+    b.add_argument("--sheet", help="sample sheet (.xlsx/.csv): one row per gel with its own lanes, "
+                   "marker lanes, ladder and lane names (columns: " + ", ".join(
+                       ["image", "lanes", "gel_rows", "marker_lanes", "ladder", "lane_names", "reference_lane"]) + ")")
     b.add_argument("--template", required=True,
                    help="session .json of a gel analysed with the wanted settings (lanes, ladder, ...)")
     b.add_argument("--out", required=True, help="output folder")
@@ -87,14 +90,18 @@ def main(argv=None):
     if a.cmd == "run" and a.preset not in PRESETS:
         ap.error(f"unknown ladder {a.preset!r} - see 'autogel ladders'")
     if a.cmd == "batch":
-        from .batch import collect_images, run_batch
+        from .batch import collect_images, read_sample_sheet, run_batch
         images = collect_images(a.inputs)
-        if not images:
+        try:
+            sheet = read_sample_sheet(a.sheet) if a.sheet else None
+        except ValueError as e:
+            ap.error(str(e))
+        if not images and not sheet:
             ap.error("no images found")
 
         def progress(i, n, name):
             print(f"[{i + 1}/{n}] {name}", flush=True)
-        summary = run_batch(images, a.template, a.out, progress)
+        summary = run_batch(images, a.template, a.out, progress, sheet=sheet)
         for _, r in summary.iterrows():
             print(f"{r['status']:6s} {r['gel']}  {r.get('warnings') or ''}")
         print("batch report:", os.path.join(a.out, "batch_report.md"))

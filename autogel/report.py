@@ -143,6 +143,20 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
+def _device_rows(info: dict) -> list[list]:
+    """What the imaging device stored in the file (imageio.image_info)."""
+    rows = []
+    for key, label in (("device", "Imaging device"), ("software", "Software"), ("taken", "Taken")):
+        if info.get(key):
+            rows.append([label, info[key]])
+    if info.get("exposure"):
+        e = info["exposure"]
+        rows.append(["Exposure", e if any(c.isalpha() for c in e) else f"{e} (unit not stated in the file)"])
+    if info.get("edited"):
+        rows.append(["Edited after capture", info["edited"]])
+    return rows
+
+
 def _md_table(rows: list[list], header: list[str]) -> str:
     def cell(v):
         if v is None or (isinstance(v, float) and not np.isfinite(v)):
@@ -172,6 +186,7 @@ def write_report_md(ga, df, path: str, files: list[str] | None = None):
         ["SHA-256", f"`{digest}`"],
         ["Size / type", f"{ga.data.shape[1]} × {ga.data.shape[0]} px, {ga.gel.dtype}"],
         ["Saturation level", f"{ga.gel.saturation_level:.0f} ({int(ga.gel.raw_max.sum())} px at/above)"],
+        *_device_rows(getattr(ga.gel, "info", {}) or {}),
         ["Orientation", f"rot90×{o.get('rot90_k', 0)}, flip ↔ {bool(o.get('flip_lr'))}, "
                         f"flip ↕ {bool(o.get('flip_ud'))}, skew {o.get('angle', 0):+.2f}°, "
                         f"inverted {bool(o.get('invert'))}"],

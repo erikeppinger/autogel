@@ -66,11 +66,17 @@ def normalise(df: pd.DataFrame, ga, size_col: str | None) -> tuple[pd.DataFrame,
     * ``total_lane``: divide by the lane's total signal (total-protein / stain-free / Ponceau),
       optionally from another channel or an added image of the total-protein stain.
 
-    ``fold_change`` = normalised value / the same band group's value in ``reference_lane``."""
+    ``fold_change`` = normalised value / the same band group's value in ``reference_lane``;
+    without normalisation the band volumes are compared directly. With the same reference sample
+    on every gel, fold changes can be compared between gels (batch: ``batch_compare.csv``)."""
     p = ga.params
     warn: list[str] = []
     df = df.copy()
-    if p.norm_method in (None, "", "none") or not len(df):
+    if not len(df):
+        return df, warn
+    if p.norm_method in (None, "", "none"):
+        if p.reference_lane:
+            df["fold_change"] = _fold(df, "volume", p.reference_lane, warn)
         return df, warn
     names = ga.channel_names()
     lc_col = tgt_col = "volume"
@@ -110,13 +116,18 @@ def normalise(df: pd.DataFrame, ga, size_col: str | None) -> tuple[pd.DataFrame,
     df["normalised"] = df[tgt_col] / df["lc_signal"]
     df.loc[df["is_marker"], "normalised"] = np.nan
     if p.reference_lane:
-        ref = df[(df["lane"] == p.reference_lane) & df["band_group"].notna()]
-        ref_val = dict(zip(ref["band_group"].astype(int), ref["normalised"]))
-        if not ref_val:
-            warn.append(f"reference lane {p.reference_lane} has no bands to compare with")
-        df["fold_change"] = [v / ref_val[int(g)] if pd.notna(g) and int(g) in ref_val and ref_val[int(g)] else np.nan
-                             for v, g in zip(df["normalised"], df["band_group"])]
+        df["fold_change"] = _fold(df, "normalised", p.reference_lane, warn)
     return df, warn
+
+
+def _fold(df: pd.DataFrame, col: str, ref_lane: int, warn: list[str]) -> list[float]:
+    """``col`` of each band / the same band group's ``col`` in ``ref_lane``."""
+    ref = df[(df["lane"] == ref_lane) & df["band_group"].notna()]
+    ref_val = dict(zip(ref["band_group"].astype(int), ref[col]))
+    if not ref_val:
+        warn.append(f"reference lane {ref_lane} has no bands to compare with")
+    return [v / ref_val[int(g)] if pd.notna(g) and int(g) in ref_val and ref_val[int(g)] else np.nan
+            for v, g in zip(df[col], df["band_group"])]
 
 
 def group_matrix(df: pd.DataFrame, value: str = "volume") -> pd.DataFrame:
